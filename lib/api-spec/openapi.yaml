@@ -1,0 +1,466 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: workspace
+    description: DDD workspace overview
+  - name: bounded-contexts
+    description: Bounded context management
+  - name: domain-nodes
+    description: Domain model and event storming nodes
+  - name: relationships
+    description: Typed relationships between domain nodes and contexts
+  - name: schema-connections
+    description: External database connection profiles and schema discovery
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /workspace:
+    get:
+      operationId: getWorkspace
+      tags: [workspace]
+      summary: Load the active DDD workspace
+      responses:
+        "200":
+          description: Workspace snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceSnapshot"
+  /bounded-contexts:
+    post:
+      operationId: createBoundedContext
+      tags: [bounded-contexts]
+      summary: Create a bounded context
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BoundedContextInput"
+      responses:
+        "201":
+          description: Created bounded context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BoundedContext"
+    get:
+      operationId: listBoundedContexts
+      tags: [bounded-contexts]
+      summary: List bounded contexts
+      responses:
+        "200":
+          description: Bounded contexts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BoundedContext"
+  /bounded-contexts/{id}:
+    patch:
+      operationId: updateBoundedContext
+      tags: [bounded-contexts]
+      summary: Update a bounded context
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BoundedContextUpdate"
+      responses:
+        "200":
+          description: Updated bounded context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BoundedContext"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteBoundedContext
+      tags: [bounded-contexts]
+      summary: Delete a bounded context
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: Deleted
+  /domain-nodes:
+    post:
+      operationId: createDomainNode
+      tags: [domain-nodes]
+      summary: Create a domain or event storming node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DomainNodeInput"
+      responses:
+        "201":
+          description: Created node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DomainNode"
+    get:
+      operationId: listDomainNodes
+      tags: [domain-nodes]
+      summary: List all domain nodes
+      responses:
+        "200":
+          description: Domain nodes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DomainNode"
+  /domain-nodes/{id}:
+    patch:
+      operationId: updateDomainNode
+      tags: [domain-nodes]
+      summary: Update a domain node
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DomainNodeUpdate"
+      responses:
+        "200":
+          description: Updated node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DomainNode"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteDomainNode
+      tags: [domain-nodes]
+      summary: Delete a domain node
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: Deleted
+  /relationships:
+    post:
+      operationId: createRelationship
+      tags: [relationships]
+      summary: Create a typed relationship between model elements
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RelationshipInput"
+      responses:
+        "201":
+          description: Created relationship
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Relationship"
+    get:
+      operationId: listRelationships
+      tags: [relationships]
+      summary: List typed relationships
+      responses:
+        "200":
+          description: Relationships
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Relationship"
+  /relationships/{id}:
+    delete:
+      operationId: deleteRelationship
+      tags: [relationships]
+      summary: Delete a relationship
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: Deleted
+  /schema-connections:
+    post:
+      operationId: createSchemaConnection
+      tags: [schema-connections]
+      summary: Save a database connection profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SchemaConnectionInput"
+      responses:
+        "201":
+          description: Created connection profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SchemaConnection"
+    get:
+      operationId: listSchemaConnections
+      tags: [schema-connections]
+      summary: List database connection profiles
+      responses:
+        "200":
+          description: Connection profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SchemaConnection"
+  /schema-connections/{id}/introspect:
+    post:
+      operationId: introspectSchemaConnection
+      tags: [schema-connections]
+      summary: Introspect tables and relationships for a database connection
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Discovered schema
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SchemaSnapshot"
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    BoundedContext:
+      type: object
+      required: [id, name, purpose, color, nodeCount, relationshipCount]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        purpose: { type: string }
+        color: { type: string }
+        nodeCount: { type: integer }
+        relationshipCount: { type: integer }
+    BoundedContextInput:
+      type: object
+      required: [name, purpose, color]
+      properties:
+        name: { type: string, minLength: 1 }
+        purpose: { type: string }
+        color: { type: string }
+    BoundedContextUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        purpose: { type: string }
+        color: { type: string }
+    DomainNode:
+      type: object
+      required: [id, contextId, kind, name, description, status, x, y, tags]
+      properties:
+        id: { type: string }
+        contextId: { type: string }
+        kind:
+          type: string
+          enum: [aggregate, aggregate-root, entity, value-object, domain-event, command, policy, actor, read-model, repository, service, resource]
+        name: { type: string }
+        description: { type: string }
+        status:
+          type: string
+          enum: [draft, validated, needs-review]
+        x: { type: number }
+        y: { type: number }
+        tags:
+          type: array
+          items: { type: string }
+    DomainNodeInput:
+      type: object
+      required: [contextId, kind, name, description, status, x, y, tags]
+      properties:
+        contextId: { type: string }
+        kind:
+          type: string
+          enum: [aggregate, aggregate-root, entity, value-object, domain-event, command, policy, actor, read-model, repository, service, resource]
+        name: { type: string, minLength: 1 }
+        description: { type: string }
+        status:
+          type: string
+          enum: [draft, validated, needs-review]
+        x: { type: number }
+        y: { type: number }
+        tags:
+          type: array
+          items: { type: string }
+    DomainNodeUpdate:
+      type: object
+      properties:
+        contextId: { type: string }
+        kind:
+          type: string
+          enum: [aggregate, aggregate-root, entity, value-object, domain-event, command, policy, actor, read-model, repository, service, resource]
+        name: { type: string, minLength: 1 }
+        description: { type: string }
+        status:
+          type: string
+          enum: [draft, validated, needs-review]
+        x: { type: number }
+        y: { type: number }
+        tags:
+          type: array
+          items: { type: string }
+    Relationship:
+      type: object
+      required: [id, sourceId, targetId, type, label, contextId]
+      properties:
+        id: { type: string }
+        sourceId: { type: string }
+        targetId: { type: string }
+        type:
+          type: string
+          enum: [uses, aggregation, composition, generalization, specialization, publishes, subscribes, owns, invokes, exposed-by]
+        label: { type: string }
+        contextId: { type: string }
+    RelationshipInput:
+      type: object
+      required: [sourceId, targetId, type, label, contextId]
+      properties:
+        sourceId: { type: string }
+        targetId: { type: string }
+        type:
+          type: string
+          enum: [uses, aggregation, composition, generalization, specialization, publishes, subscribes, owns, invokes, exposed-by]
+        label: { type: string }
+        contextId: { type: string }
+    SchemaConnection:
+      type: object
+      required: [id, name, engine, host, database, status, tableCount, lastIntrospectedAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        engine:
+          type: string
+          enum: [oracle, db2, mysql, postgres]
+        host: { type: string }
+        database: { type: string }
+        status:
+          type: string
+          enum: [connected, pending, error]
+        tableCount: { type: integer }
+        lastIntrospectedAt: { type: ["string", "null"] }
+    SchemaConnectionInput:
+      type: object
+      required: [name, engine, host, database, username, password]
+      properties:
+        name: { type: string, minLength: 1 }
+        engine:
+          type: string
+          enum: [oracle, db2, mysql, postgres]
+        host: { type: string, minLength: 1 }
+        port: { type: integer }
+        database: { type: string, minLength: 1 }
+        username: { type: string, minLength: 1 }
+        password: { type: string, minLength: 1, writeOnly: true }
+    SchemaTable:
+      type: object
+      required: [name, schema, rowEstimate, columns]
+      properties:
+        name: { type: string }
+        schema: { type: string }
+        rowEstimate: { type: integer }
+        columns:
+          type: array
+          items:
+            $ref: "#/components/schemas/SchemaColumn"
+    SchemaColumn:
+      type: object
+      required: [name, type, nullable, primaryKey]
+      properties:
+        name: { type: string }
+        type: { type: string }
+        nullable: { type: boolean }
+        primaryKey: { type: boolean }
+    SchemaSnapshot:
+      type: object
+      required: [connectionId, tables, relationships, generatedAt]
+      properties:
+        connectionId: { type: string }
+        tables:
+          type: array
+          items:
+            $ref: "#/components/schemas/SchemaTable"
+        relationships:
+          type: array
+          items:
+            $ref: "#/components/schemas/Relationship"
+        generatedAt: { type: string }
+    WorkspaceSnapshot:
+      type: object
+      required: [projectName, contexts, nodes, relationships, connections, stats]
+      properties:
+        projectName: { type: string }
+        contexts:
+          type: array
+          items:
+            $ref: "#/components/schemas/BoundedContext"
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/DomainNode"
+        relationships:
+          type: array
+          items:
+            $ref: "#/components/schemas/Relationship"
+        connections:
+          type: array
+          items:
+            $ref: "#/components/schemas/SchemaConnection"
+        stats:
+          type: object
+          required: [contexts, nodes, relationships, connections]
+          properties:
+            contexts: { type: integer }
+            nodes: { type: integer }
+            relationships: { type: integer }
+            connections: { type: integer }
+
