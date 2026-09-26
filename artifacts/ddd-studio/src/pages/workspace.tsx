@@ -62,6 +62,12 @@ const relationshipTypes = [
   'specialization',
   'publishes',
   'subscribes',
+  'triggers',
+  'reacts-to',
+  'orchestrates',
+  'choreographs',
+  'projects-to',
+  'handles',
   'owns',
   'invokes',
   'exposed-by',
@@ -74,18 +80,14 @@ const relationshipTypes = [
   'partnership',
   'separate-ways',
 ] as const;
-const CONTEXT_MAP_TYPES = new Set([
-  'shared-kernel',
-  'customer-supplier',
-  'conformist',
-  'anti-corruption',
-  'open-host-service',
-  'published-language',
-  'partnership',
-  'separate-ways',
+const EVENT_KIND_SET = new Set([
+  ...EVENT_KINDS.map((k) => k.kind),
+  'command-handler',
+  'query-handler',
+  'saga',
+  'process-manager',
+  'read-model',
 ]);
-const contextColors = ['#e7a94b', '#3e9b9a', '#d8755e', '#6588c5', '#8c71b7'];
-const EVENT_KIND_SET = new Set(EVENT_KINDS.map((k) => k.kind));
 
 type ViewTab = 'designer' | 'context-map' | 'event-storming';
 
@@ -175,6 +177,44 @@ function Modal({
   );
 }
 
+
+/** Publisher + listeners chain for event-storming highlight */
+function buildEventChain(
+  selectedId: string | null,
+  nodes: { id: string; kind: string }[],
+  relationships: { sourceId: string; targetId: string; type: string }[],
+): Set<string> {
+  if (!selectedId) return new Set();
+  const ids = new Set<string>([selectedId]);
+  const chainTypes = new Set([
+    'triggers',
+    'reacts-to',
+    'publishes',
+    'subscribes',
+    'orchestrates',
+    'choreographs',
+    'projects-to',
+    'handles',
+  ]);
+  for (const r of relationships) {
+    if (!chainTypes.has(r.type)) continue;
+    if (r.sourceId === selectedId || r.targetId === selectedId) {
+      ids.add(r.sourceId);
+      ids.add(r.targetId);
+    }
+  }
+  // one hop expand
+  const seed = [...ids];
+  for (const r of relationships) {
+    if (!chainTypes.has(r.type)) continue;
+    if (seed.includes(r.sourceId) || seed.includes(r.targetId)) {
+      ids.add(r.sourceId);
+      ids.add(r.targetId);
+    }
+  }
+  return ids;
+}
+
 export default function WorkspacePage() {
   const queryClient = useQueryClient();
   const workspace = useGetWorkspace();
@@ -236,6 +276,10 @@ export default function WorkspacePage() {
 
   const domainNodes = useMemo(() => nodes.filter((n) => !EVENT_KIND_SET.has(n.kind as never)), [nodes]);
   const eventNodes = useMemo(() => nodes.filter((n) => EVENT_KIND_SET.has(n.kind as never)), [nodes]);
+  const chainHighlight = useMemo(
+    () => (viewTab === 'event-storming' ? buildEventChain(selectedId, nodes, relationships) : new Set<string>()),
+    [viewTab, selectedId, nodes, relationships],
+  );
 
   const visibleNodes = useMemo(
     () =>
@@ -842,30 +886,19 @@ export default function WorkspacePage() {
                 />
               )}
               {viewTab === 'event-storming' && (
-                <div className="relative min-h-[610px] overflow-auto bg-[repeating-linear-gradient(0deg,transparent,transparent_23px,hsl(var(--border)/.35)_24px),repeating-linear-gradient(90deg,transparent,transparent_23px,hsl(var(--border)/.35)_24px)] p-6">
-                  {visibleEvents.length === 0 ? (
-                    <div className="flex min-h-[500px] items-center justify-center">
-                      <div className="max-w-sm border border-dashed border-border bg-card/90 p-8 text-center">
-                        <Zap size={28} className="mx-auto text-primary" />
-                        <h3 className="mt-4 font-display text-xl font-semibold">Empty storm board</h3>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          Use the palette to drop commands, domain events, policies, and actors.
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap gap-4">
-                      {visibleEvents.map((node) => (
-                        <EventSticky
-                          key={node.id}
-                          node={node}
-                          selected={selectedId === node.id}
-                          onSelect={() => setSelectedId(node.id)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <DomainMap
+                  nodes={visibleEvents}
+                  relationships={relationships}
+                  contexts={contexts}
+                  selectedId={selectedId}
+                  zoom={zoom}
+                  onSelect={onSelectNode}
+                  showLabels
+                  timelineMode
+                  highlightIds={chainHighlight}
+                  connectFromId={connectFromId}
+                  onConnectEnd={onConnectEnd}
+                />
               )}
             </div>
           </div>
@@ -1421,6 +1454,8 @@ function NodeInspector({
     eventVersion: string;
     eventPayloadSchema: string;
     eventCompatibility: 'backward' | 'forward' | 'full' | 'none';
+    sagaStyle?: 'orchestration' | 'choreography' | 'none';
+    cqrsSide?: 'command' | 'query' | 'both' | 'none';
   }) => void;
   onDelete: () => void;
   onDeleteRelationship: (id: string) => void;
@@ -1434,6 +1469,8 @@ function NodeInspector({
   const [eventVersion, setEventVersion] = useState(node.eventVersion ?? '1.0.0');
   const [eventPayloadSchema, setEventPayloadSchema] = useState(node.eventPayloadSchema ?? '');
   const [eventCompatibility, setEventCompatibility] = useState(node.eventCompatibility ?? 'backward');
+  const [sagaStyle, setSagaStyle] = useState((node as { sagaStyle?: string }).sagaStyle ?? 'none');
+  const [cqrsSide, setCqrsSide] = useState((node as { cqrsSide?: string }).cqrsSide ?? 'none');
   useEffect(() => {
     setName(node.name);
     setDescription(node.description);
@@ -1444,6 +1481,8 @@ function NodeInspector({
     setEventVersion(node.eventVersion ?? '1.0.0');
     setEventPayloadSchema(node.eventPayloadSchema ?? '');
     setEventCompatibility(node.eventCompatibility ?? 'backward');
+    setSagaStyle((node as { sagaStyle?: string }).sagaStyle ?? 'none');
+    setCqrsSide((node as { cqrsSide?: string }).cqrsSide ?? 'none');
   }, [node]);
   const context = contexts.find((item) => item.id === node.contextId);
   const related = relationships.filter((item) => item.sourceId === node.id || item.targetId === node.id);
@@ -1548,6 +1587,39 @@ function NodeInspector({
           <span className="font-mono-ui text-[10px] uppercase tracking-[.15em] text-muted-foreground">Belongs to</span>
           <span className="text-xs font-medium">{context?.name ?? 'Unassigned'}</span>
         </div>
+        {(node.kind === 'saga' || node.kind === 'process-manager' || node.kind === 'policy') && (
+          <label className="mt-4 block">
+            <span className="mb-1.5 block font-mono-ui text-[10px] uppercase tracking-[.14em] text-muted-foreground">Saga style</span>
+            <select
+              value={sagaStyle}
+              onChange={(e) => setSagaStyle(e.target.value)}
+              className="h-9 w-full border border-input bg-background px-3 text-sm"
+            >
+              <option value="none">none</option>
+              <option value="orchestration">orchestration (central coordinator)</option>
+              <option value="choreography">choreography (peer events)</option>
+            </select>
+          </label>
+        )}
+        {(node.kind === 'command' ||
+          node.kind === 'command-handler' ||
+          node.kind === 'query-handler' ||
+          node.kind === 'read-model' ||
+          node.kind === 'domain-event') && (
+          <label className="mt-4 block">
+            <span className="mb-1.5 block font-mono-ui text-[10px] uppercase tracking-[.14em] text-muted-foreground">CQRS side</span>
+            <select
+              value={cqrsSide}
+              onChange={(e) => setCqrsSide(e.target.value)}
+              className="h-9 w-full border border-input bg-background px-3 text-sm"
+            >
+              <option value="none">none</option>
+              <option value="command">command (write)</option>
+              <option value="query">query (read)</option>
+              <option value="both">both</option>
+            </select>
+          </label>
+        )}
         <div className="mt-4">
           <div className="mb-2 font-mono-ui text-[10px] uppercase tracking-[.15em] text-muted-foreground">
             Connections <span className="text-foreground/50">({related.length})</span>
@@ -1592,6 +1664,8 @@ function NodeInspector({
             eventVersion: eventVersion.trim() || '1.0.0',
             eventPayloadSchema,
             eventCompatibility: eventCompatibility as 'backward' | 'forward' | 'full' | 'none',
+            sagaStyle: sagaStyle as 'orchestration' | 'choreography' | 'none',
+            cqrsSide: cqrsSide as 'command' | 'query' | 'both' | 'none',
           })
         }
         disabled={!name.trim()}

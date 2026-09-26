@@ -396,7 +396,7 @@ components:
         contextId: { type: string }
         kind:
           type: string
-          enum: [aggregate, aggregate-root, entity, value-object, domain-event, command, policy, actor, read-model, repository, service, resource, anti-corruption-layer, saga, process-manager]
+          enum: [aggregate, aggregate-root, entity, value-object, domain-event, command, policy, actor, read-model, repository, service, resource, anti-corruption-layer, saga, process-manager, command-handler, query-handler]
         name: { type: string }
         description: { type: string }
         status:
@@ -425,7 +425,7 @@ components:
         contextId: { type: string }
         kind:
           type: string
-          enum: [aggregate, aggregate-root, entity, value-object, domain-event, command, policy, actor, read-model, repository, service, resource, anti-corruption-layer, saga, process-manager]
+          enum: [aggregate, aggregate-root, entity, value-object, domain-event, command, policy, actor, read-model, repository, service, resource, anti-corruption-layer, saga, process-manager, command-handler, query-handler]
         name: { type: string, minLength: 1 }
         description: { type: string }
         status:
@@ -453,7 +453,7 @@ components:
         contextId: { type: string }
         kind:
           type: string
-          enum: [aggregate, aggregate-root, entity, value-object, domain-event, command, policy, actor, read-model, repository, service, resource, anti-corruption-layer, saga, process-manager]
+          enum: [aggregate, aggregate-root, entity, value-object, domain-event, command, policy, actor, read-model, repository, service, resource, anti-corruption-layer, saga, process-manager, command-handler, query-handler]
         name: { type: string, minLength: 1 }
         description: { type: string }
         status:
@@ -484,7 +484,7 @@ components:
         targetId: { type: string }
         type:
           type: string
-          enum: [uses, aggregation, composition, generalization, specialization, publishes, subscribes, owns, invokes, exposed-by, shared-kernel, customer-supplier, conformist, anti-corruption, open-host-service, published-language, partnership, separate-ways]
+          enum: [uses, aggregation, composition, generalization, specialization, publishes, subscribes, owns, invokes, exposed-by, shared-kernel, customer-supplier, conformist, anti-corruption, open-host-service, published-language, partnership, separate-ways, triggers, reacts-to, orchestrates, choreographs, projects-to, handles]
         label: { type: string }
         contextId: { type: string }
     RelationshipInput:
@@ -495,7 +495,7 @@ components:
         targetId: { type: string }
         type:
           type: string
-          enum: [uses, aggregation, composition, generalization, specialization, publishes, subscribes, owns, invokes, exposed-by, shared-kernel, customer-supplier, conformist, anti-corruption, open-host-service, published-language, partnership, separate-ways]
+          enum: [uses, aggregation, composition, generalization, specialization, publishes, subscribes, owns, invokes, exposed-by, shared-kernel, customer-supplier, conformist, anti-corruption, open-host-service, published-language, partnership, separate-ways, triggers, reacts-to, orchestrates, choreographs, projects-to, handles]
         label: { type: string }
         contextId: { type: string }
     SchemaConnection:

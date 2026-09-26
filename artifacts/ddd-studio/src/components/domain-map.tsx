@@ -40,6 +40,10 @@ type DomainMapProps = {
   showLabels?: boolean;
   /** When true, render larger context boxes instead of domain element cards. */
   contextMode?: boolean;
+  /** Horizontal timeline layout for event storming (command → event → policy). */
+  timelineMode?: boolean;
+  /** Highlight publisher/listener chain for selected event or node. */
+  highlightIds?: Set<string> | string[];
   /** Optional: start a relationship from this node (connect mode). */
   connectFromId?: string | null;
   onConnectStart?: (id: string) => void;
@@ -54,6 +58,12 @@ const relationColors: Record<string, string> = {
   specialization: 'hsl(var(--chart-4))',
   publishes: 'hsl(var(--chart-3))',
   subscribes: 'hsl(var(--chart-3))',
+  triggers: 'hsl(var(--chart-3))',
+  'reacts-to': 'hsl(var(--chart-5, var(--chart-3)))',
+  orchestrates: 'hsl(var(--primary))',
+  choreographs: 'hsl(var(--accent))',
+  'projects-to': 'hsl(var(--chart-2))',
+  handles: 'hsl(var(--primary))',
   owns: 'hsl(var(--chart-2))',
   invokes: 'hsl(var(--primary))',
   'exposed-by': 'hsl(var(--chart-4))',
@@ -133,9 +143,16 @@ function markersForType(type: string): { start?: string; end?: string; dash?: st
     case 'subscribes':
       return { end: 'url(#uml-arrow)', dash: '7 5' };
     case 'publishes':
+    case 'triggers':
+    case 'orchestrates':
+    case 'projects-to':
+    case 'handles':
     case 'invokes':
     case 'exposed-by':
       return { end: 'url(#uml-arrow-filled)' };
+    case 'reacts-to':
+    case 'choreographs':
+      return { end: 'url(#uml-arrow)', dash: '4 4' };
     case 'shared-kernel':
     case 'partnership':
       return { end: 'url(#uml-arrow)', start: 'url(#uml-arrow)' };
@@ -152,6 +169,12 @@ function markersForType(type: string): { start?: string; end?: string; dash?: st
   }
 }
 
+function timelinePosition(index: number, total: number, lane = 0) {
+  const col = index % Math.max(1, Math.ceil(total / 3));
+  const row = Math.floor(index / Math.max(1, Math.ceil(total / 3)));
+  return { x: 80 + col * 200, y: 80 + (row + lane) * 120 };
+}
+
 export function DomainMap({
   nodes,
   relationships,
@@ -161,15 +184,41 @@ export function DomainMap({
   onSelect,
   showLabels = false,
   contextMode = false,
+  timelineMode = false,
+  highlightIds,
   connectFromId = null,
   onConnectStart,
   onConnectEnd,
 }: DomainMapProps) {
+  const highlight = useMemo(() => {
+    if (!highlightIds) return new Set<string>();
+    return highlightIds instanceof Set ? highlightIds : new Set(highlightIds);
+  }, [highlightIds]);
+
   const positions = useMemo(() => {
     const next = new Map<string, { x: number; y: number }>();
     if (contextMode) {
       contexts.forEach((ctx, index) => {
         next.set(ctx.id, getGridPosition(index, Math.max(1, contexts.length)));
+      });
+    } else if (timelineMode) {
+      // Sort: actors/commands first, then events, then policies/sagas/handlers, then read models
+      const rank = (k: string) => {
+        if (k === 'actor' || k === 'command') return 0;
+        if (k === 'command-handler') return 1;
+        if (k === 'domain-event') return 2;
+        if (k === 'policy' || k === 'saga' || k === 'process-manager') return 3;
+        if (k === 'read-model' || k === 'query-handler') return 4;
+        return 5;
+      };
+      const ordered = [...nodes].sort((a, b) => rank(a.kind) - rank(b.kind) || a.name.localeCompare(b.name));
+      ordered.forEach((node, index) => {
+        const lane = rank(node.kind);
+        const inLane = ordered.filter((n) => rank(n.kind) === lane).findIndex((n) => n.id === node.id);
+        next.set(node.id, {
+          x: 100 + inLane * 210,
+          y: 70 + lane * 130,
+        });
       });
     } else {
       nodes.forEach((node, index) => {
@@ -181,7 +230,7 @@ export function DomainMap({
       });
     }
     return next;
-  }, [nodes, contexts, contextMode]);
+  }, [nodes, contexts, contextMode, timelineMode]);
 
   const visibleRelationships = useMemo(() => {
     if (contextMode) {
@@ -247,18 +296,23 @@ export function DomainMap({
             const label = relationship.label || relationship.type;
             const labelX = ((sourcePosition.x + targetPosition.x) / 2) * 10;
             const labelY = ((sourcePosition.y + targetPosition.y) / 2) * 10 - 8;
+            const chainEdge =
+              highlight.size > 0 &&
+              highlight.has(relationship.sourceId) &&
+              highlight.has(relationship.targetId);
+            const dimEdge = highlight.size > 0 && !chainEdge;
             return (
               <g key={relationship.id} style={{ stroke: color }}>
                 <path
                   d={edgePath(sourcePosition, targetPosition)}
                   fill="none"
                   stroke={color}
-                  strokeWidth="2.2"
+                  strokeWidth={chainEdge ? 3.2 : 2.2}
                   strokeDasharray={dash}
                   strokeLinecap="round"
                   markerStart={start}
                   markerEnd={end ?? 'url(#domain-map-arrow)'}
-                  opacity=".92"
+                  opacity={dimEdge ? 0.2 : chainEdge ? 1 : 0.92}
                 />
                 {showLabels && (
                   <>
@@ -330,6 +384,8 @@ export function DomainMap({
           })
         ) : (
           nodes.map((node) => {
+            const isHighlighted = highlight.size === 0 || highlight.has(node.id);
+            const isDimmed = highlight.size > 0 && !highlight.has(node.id);
             const position = positions.get(node.id)!;
             const context = contexts.find((item) => item.id === node.contextId);
             const methods = node.methods ?? [];
@@ -339,6 +395,7 @@ export function DomainMap({
               <button
                 type="button"
                 key={node.id}
+                style={{ opacity: isDimmed ? 0.3 : 1, transition: 'opacity 0.15s' }}
                 onClick={() => handleNodeClick(node.id)}
                 data-testid={`node-card-${node.id}`}
                 className={`absolute z-10 flex min-h-[148px] w-[142px] -translate-x-1/2 -translate-y-1/2 flex-col border bg-card px-3 py-2.5 text-left shadow-sm transition-all hover:-translate-y-[calc(50%+3px)] hover:shadow-md ${
@@ -383,6 +440,12 @@ export function DomainMap({
           <>
             <span className="hidden text-border sm:inline">•</span>
             <span className="hidden sm:inline">UML symbols · no labels</span>
+          </>
+        )}
+        {timelineMode && (
+          <>
+            <span className="hidden text-border sm:inline">•</span>
+            <span className="hidden sm:inline">timeline · trigger → event → listener</span>
           </>
         )}
         {showLabels && contextMode && (

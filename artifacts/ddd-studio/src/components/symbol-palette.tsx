@@ -28,6 +28,8 @@ export const DOMAIN_KINDS = [
   { kind: 'anti-corruption-layer', label: 'Anti-corruption layer', icon: Shield, hint: 'Translate foreign models' },
   { kind: 'saga', label: 'Saga', icon: GitBranch, hint: 'Long-running process' },
   { kind: 'process-manager', label: 'Process manager', icon: GitBranch, hint: 'Orchestrates reactions' },
+  { kind: 'command-handler', label: 'Command handler', icon: Command, hint: 'CQRS write executor' },
+  { kind: 'query-handler', label: 'Query handler', icon: Sparkles, hint: 'CQRS read executor' },
 ] as const;
 
 export const EVENT_KINDS = [
@@ -35,6 +37,17 @@ export const EVENT_KINDS = [
   { kind: 'command', label: 'Command', icon: Command, hint: 'Intent to change', color: 'bg-sky-400/90 text-sky-950' },
   { kind: 'policy', label: 'Policy', icon: Shield, hint: 'When X then Y', color: 'bg-violet-400/90 text-violet-950' },
   { kind: 'actor', label: 'Actor', icon: User, hint: 'Person or system', color: 'bg-emerald-400/90 text-emerald-950' },
+] as const;
+
+export const PROCESS_RELATIONSHIPS = [
+  { type: 'triggers', label: 'Triggers', symbol: '⚡→', hint: 'Command triggers event' },
+  { type: 'reacts-to', label: 'Reacts to', symbol: '←◎', hint: 'Policy/saga listens to event' },
+  { type: 'orchestrates', label: 'Orchestrates', symbol: '◆→', hint: 'Central saga coordinates' },
+  { type: 'choreographs', label: 'Choreographs', symbol: '⇄', hint: 'Peer event-driven flow' },
+  { type: 'projects-to', label: 'Projects to', symbol: '⟹', hint: 'Event projects to read model' },
+  { type: 'handles', label: 'Handles', symbol: '▷', hint: 'Handler executes command/query' },
+  { type: 'publishes', label: 'Publishes', symbol: '⇢', hint: 'Aggregate publishes event' },
+  { type: 'subscribes', label: 'Subscribes', symbol: '⇠', hint: 'Listener subscribes' },
 ] as const;
 
 export const UML_RELATIONSHIPS = [
@@ -106,6 +119,28 @@ export function SymbolPalette({ mode, onPickKind, onPickRelation, activeRelation
             );
           })}
         </div>
+
+        {mode === 'event-storming' && (
+          <>
+            <div className="mb-2 mt-4 flex items-center gap-1.5 px-1 font-mono-ui text-[9px] uppercase tracking-[.12em] text-muted-foreground">
+              <Link2 size={11} /> Process links
+            </div>
+            <div className="space-y-1">
+              {PROCESS_RELATIONSHIPS.map((rel) => (
+                <button
+                  type="button"
+                  key={rel.type}
+                  onClick={() => onPickRelation(rel.type)}
+                  className="flex w-full items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left text-xs hover:border-border hover:bg-muted/60"
+                  title={rel.hint}
+                >
+                  <span className="font-mono text-[11px] text-primary">{rel.symbol}</span>
+                  <span className="flex-1">{rel.label}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
 
         {mode === 'designer' && (
           <>

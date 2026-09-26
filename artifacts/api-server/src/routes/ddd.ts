@@ -52,7 +52,9 @@ type NodeKind =
   | "resource"
   | "anti-corruption-layer"
   | "saga"
-  | "process-manager";
+  | "process-manager"
+  | "command-handler"
+  | "query-handler";
 
 type DomainNode = {
   id: string;
@@ -72,6 +74,10 @@ type DomainNode = {
   /** JSON Schema or descriptive payload contract */
   eventPayloadSchema: string;
   eventCompatibility: "backward" | "forward" | "full" | "none";
+  /** Saga coordination style: central orchestrator vs distributed choreography */
+  sagaStyle: "orchestration" | "choreography" | "none";
+  /** CQRS side for handlers / models */
+  cqrsSide: "command" | "query" | "both" | "none";
 };
 
 type RelationType =
@@ -92,7 +98,13 @@ type RelationType =
   | "open-host-service"
   | "published-language"
   | "partnership"
-  | "separate-ways";
+  | "separate-ways"
+  | "triggers"
+  | "reacts-to"
+  | "orchestrates"
+  | "choreographs"
+  | "projects-to"
+  | "handles";
 
 type Relationship = {
   id: string;
@@ -373,16 +385,144 @@ const defaultNodes: DomainNode[] = [
     contextId: "context-orders",
     kind: "saga",
     name: "FulfillmentSaga",
-    description: "Process manager: OrderPlaced → reserve stock → authorize payment.",
+    description: "Orchestration saga: central coordinator for OrderPlaced then reserve, charge, ship; compensates on failure.",
     status: "draft",
     x: 58,
     y: 36,
-    tags: ["process"],
+    tags: ["process", "orchestration"],
     methods: ["onOrderPlaced()", "onStockReserved()", "onPaymentAuthorized()", "compensate()"],
     invariants: ["Compensation runs if payment fails after stock reserved"],
     eventVersion: "1.0.0",
     eventPayloadSchema: "",
     eventCompatibility: "backward",
+    sagaStyle: "orchestration",
+    cqrsSide: "none",
+  },
+  {
+    id: "node-place-order-cmd",
+    contextId: "context-orders",
+    kind: "command",
+    name: "PlaceOrder",
+    description: "Intent to create an order (CQRS write side).",
+    status: "draft",
+    x: 12,
+    y: 12,
+    tags: ["cqrs", "write"],
+    methods: [],
+    invariants: [],
+    eventVersion: "1.0.0",
+    eventPayloadSchema: "",
+    eventCompatibility: "backward",
+    sagaStyle: "none",
+    cqrsSide: "command",
+  },
+  {
+    id: "node-place-order-handler",
+    contextId: "context-orders",
+    kind: "command-handler",
+    name: "PlaceOrderHandler",
+    description: "CQRS command executor: applies PlaceOrder on Order aggregate and raises OrderPlaced.",
+    status: "draft",
+    x: 28,
+    y: 12,
+    tags: ["cqrs", "write"],
+    methods: ["handle(PlaceOrder)"],
+    invariants: ["Exactly one handler per command type"],
+    eventVersion: "1.0.0",
+    eventPayloadSchema: "",
+    eventCompatibility: "backward",
+    sagaStyle: "none",
+    cqrsSide: "command",
+  },
+  {
+    id: "node-order-list-rm",
+    contextId: "context-orders",
+    kind: "read-model",
+    name: "OrderListView",
+    description: "CQRS query projection of orders for listing UI.",
+    status: "draft",
+    x: 72,
+    y: 12,
+    tags: ["cqrs", "read"],
+    methods: ["project(OrderPlaced)", "project(OrderCancelled)"],
+    invariants: [],
+    eventVersion: "1.0.0",
+    eventPayloadSchema: "",
+    eventCompatibility: "backward",
+    sagaStyle: "none",
+    cqrsSide: "query",
+  },
+  {
+    id: "node-order-query-handler",
+    contextId: "context-orders",
+    kind: "query-handler",
+    name: "GetOrderListHandler",
+    description: "CQRS query side: reads OrderListView only (no domain writes).",
+    status: "draft",
+    x: 88,
+    y: 12,
+    tags: ["cqrs", "read"],
+    methods: ["handle(GetOrderList)"],
+    invariants: ["Must not mutate aggregates"],
+    eventVersion: "1.0.0",
+    eventPayloadSchema: "",
+    eventCompatibility: "backward",
+    sagaStyle: "none",
+    cqrsSide: "query",
+  },
+  {
+    id: "node-inventory-policy",
+    contextId: "context-inventory",
+    kind: "policy",
+    name: "WhenOrderPlacedReserveStock",
+    description: "Choreography: local policy reacts to OrderPlaced and issues ReserveStock (no central saga).",
+    status: "draft",
+    x: 20,
+    y: 40,
+    tags: ["choreography"],
+    methods: [],
+    invariants: [],
+    eventVersion: "1.0.0",
+    eventPayloadSchema: "",
+    eventCompatibility: "backward",
+    sagaStyle: "choreography",
+    cqrsSide: "none",
+  },
+  {
+    id: "node-reserve-stock-cmd",
+    contextId: "context-inventory",
+    kind: "command",
+    name: "ReserveStock",
+    description: "Intent to reserve inventory for an order line.",
+    status: "draft",
+    x: 40,
+    y: 40,
+    tags: ["cqrs", "write"],
+    methods: [],
+    invariants: [],
+    eventVersion: "1.0.0",
+    eventPayloadSchema: "",
+    eventCompatibility: "backward",
+    sagaStyle: "none",
+    cqrsSide: "command",
+  },
+  {
+    id: "node-stock-reserved-ev",
+    contextId: "context-inventory",
+    kind: "domain-event",
+    name: "StockReserved",
+    description: "Inventory fact used by choreography peers and optional orchestrator.",
+    status: "draft",
+    x: 60,
+    y: 40,
+    tags: ["event"],
+    methods: [],
+    invariants: [],
+    eventVersion: "1.0.0",
+    eventPayloadSchema: "{ orderId, sku, qty }",
+    eventCompatibility: "backward",
+    sagaStyle: "none",
+    cqrsSide: "none",
   },
 ];
 
@@ -475,6 +615,78 @@ const defaultRelationships: Relationship[] = [
     label: "Customer-Supplier",
     contextId: "context-orders",
   },
+  {
+    id: "rel-cmd-triggers-event",
+    sourceId: "node-place-order-cmd",
+    targetId: "node-order-placed",
+    type: "triggers",
+    label: "triggers",
+    contextId: "context-orders",
+  },
+  {
+    id: "rel-handler-handles-cmd",
+    sourceId: "node-place-order-handler",
+    targetId: "node-place-order-cmd",
+    type: "handles",
+    label: "handles",
+    contextId: "context-orders",
+  },
+  {
+    id: "rel-event-projects-rm",
+    sourceId: "node-order-placed",
+    targetId: "node-order-list-rm",
+    type: "projects-to",
+    label: "projects to",
+    contextId: "context-orders",
+  },
+  {
+    id: "rel-query-handler-rm",
+    sourceId: "node-order-query-handler",
+    targetId: "node-order-list-rm",
+    type: "uses",
+    label: "reads",
+    contextId: "context-orders",
+  },
+  {
+    id: "rel-saga-orchestrates",
+    sourceId: "node-fulfillment-saga",
+    targetId: "node-order-placed",
+    type: "orchestrates",
+    label: "orchestrates",
+    contextId: "context-orders",
+  },
+  {
+    id: "rel-policy-reacts",
+    sourceId: "node-inventory-policy",
+    targetId: "node-order-placed",
+    type: "reacts-to",
+    label: "reacts to",
+    contextId: "context-inventory",
+  },
+  {
+    id: "rel-policy-triggers-reserve",
+    sourceId: "node-inventory-policy",
+    targetId: "node-reserve-stock-cmd",
+    type: "triggers",
+    label: "issues",
+    contextId: "context-inventory",
+  },
+  {
+    id: "rel-reserve-triggers-event",
+    sourceId: "node-reserve-stock-cmd",
+    targetId: "node-stock-reserved-ev",
+    type: "triggers",
+    label: "triggers",
+    contextId: "context-inventory",
+  },
+  {
+    id: "rel-choreography-peer",
+    sourceId: "node-inventory-policy",
+    targetId: "node-stock-reserved-ev",
+    type: "choreographs",
+    label: "choreographs",
+    contextId: "context-inventory",
+  },
 ];
 
 const defaultGlossary: GlossaryTerm[] = [
@@ -549,6 +761,14 @@ function normalizeNode(raw: Partial<DomainNode> & { id: string; contextId: strin
     eventVersion: raw.eventVersion ?? "1.0.0",
     eventPayloadSchema: raw.eventPayloadSchema ?? "",
     eventCompatibility: raw.eventCompatibility ?? "backward",
+    sagaStyle: raw.sagaStyle ?? (raw.kind === "saga" || raw.kind === "process-manager" ? "orchestration" : "none"),
+    cqrsSide:
+      raw.cqrsSide ??
+      (raw.kind === "command-handler" || raw.kind === "command"
+        ? "command"
+        : raw.kind === "query-handler" || raw.kind === "read-model"
+          ? "query"
+          : "none"),
   };
 }
 
@@ -964,6 +1184,14 @@ router.post("/domain-nodes", (req, res): void => {
       body.eventCompatibility === "backward"
         ? body.eventCompatibility
         : "backward",
+    sagaStyle:
+      body.sagaStyle === "orchestration" || body.sagaStyle === "choreography"
+        ? body.sagaStyle
+        : "none",
+    cqrsSide:
+      body.cqrsSide === "command" || body.cqrsSide === "query" || body.cqrsSide === "both"
+        ? body.cqrsSide
+        : "none",
   });
   if (node.status === "validated") {
     nodes.push(node);

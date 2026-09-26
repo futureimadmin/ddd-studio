@@ -229,3 +229,33 @@ pnpm --filter @workspace/api-server add @google/adk@^2.0.0
 - Routes: `artifacts/api-server/src/routes/ai.ts`
 - Apply: `applyAiDomainDesign()` in `ddd.ts`
 
+---
+
+## Event storming chains, sagas & CQRS (design)
+
+### Process links (event storming)
+| Type | Meaning |
+|------|---------|
+| `triggers` | Command (or policy) causes a domain event |
+| `reacts-to` | Policy / saga / handler listens to an event |
+| `publishes` / `subscribes` | Aggregate publish / subscriber listen |
+| `orchestrates` | **Orchestration saga**: central coordinator drives steps |
+| `choreographs` | **Choreography**: peers react via events only (no central boss) |
+| `projects-to` | Event updates a **CQRS read model** |
+| `handles` | Command/query handler executes a command or query |
+
+Select a sticky on the **Event storming** tab to highlight the publisher/listener chain (timeline layout).
+
+### Saga styles
+- **Orchestration** — one saga/process-manager issues commands and tracks state (`sagaStyle: orchestration`).
+- **Choreography** — local policies `reacts-to` events and issue the next command (`sagaStyle: choreography`).
+
+### CQRS (design model)
+| Kind | CQRS side |
+|------|-----------|
+| `command`, `command-handler` | write |
+| `query-handler`, `read-model` | read |
+| `projects-to` edge | event → read model projection |
+
+Validation: exactly one `handles` edge per command; query handlers must not sit on the command side.
+
