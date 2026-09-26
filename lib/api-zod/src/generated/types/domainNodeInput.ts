@@ -18,4 +18,5 @@ export interface DomainNodeInput {
   x: number;
   y: number;
   tags: string[];
+  methods: string[];
 }

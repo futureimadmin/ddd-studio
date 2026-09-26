@@ -69,6 +69,7 @@ export interface DomainNode {
   x: number;
   y: number;
   tags: string[];
+  methods: string[];
 }
 
 export type DomainNodeInputKind = typeof DomainNodeInputKind[keyof typeof DomainNodeInputKind];
@@ -108,6 +109,7 @@ export interface DomainNodeInput {
   x: number;
   y: number;
   tags: string[];
+  methods: string[];
 }
 
 export type DomainNodeUpdateKind = typeof DomainNodeUpdateKind[keyof typeof DomainNodeUpdateKind];
@@ -147,6 +149,7 @@ export interface DomainNodeUpdate {
   x?: number;
   y?: number;
   tags?: string[];
+  methods?: string[];
 }
 
 export type RelationshipType = typeof RelationshipType[keyof typeof RelationshipType];

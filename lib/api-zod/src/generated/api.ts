@@ -39,7 +39,8 @@ export const GetWorkspaceResponse = zod.object({
   "status": zod.enum(['draft', 'validated', 'needs-review']),
   "x": zod.number(),
   "y": zod.number(),
-  "tags": zod.array(zod.string())
+  "tags": zod.array(zod.string()),
+  "methods": zod.array(zod.string())
 })),
   "relationships": zod.array(zod.object({
   "id": zod.string(),
@@ -154,7 +155,8 @@ export const CreateDomainNodeBody = zod.object({
   "status": zod.enum(['draft', 'validated', 'needs-review']),
   "x": zod.number(),
   "y": zod.number(),
-  "tags": zod.array(zod.string())
+  "tags": zod.array(zod.string()),
+  "methods": zod.array(zod.string())
 })
 
 export const CreateDomainNodeResponse = zod.object({
@@ -166,7 +168,8 @@ export const CreateDomainNodeResponse = zod.object({
   "status": zod.enum(['draft', 'validated', 'needs-review']),
   "x": zod.number(),
   "y": zod.number(),
-  "tags": zod.array(zod.string())
+  "tags": zod.array(zod.string()),
+  "methods": zod.array(zod.string())
 })
 
 
@@ -182,7 +185,8 @@ export const ListDomainNodesResponseItem = zod.object({
   "status": zod.enum(['draft', 'validated', 'needs-review']),
   "x": zod.number(),
   "y": zod.number(),
-  "tags": zod.array(zod.string())
+  "tags": zod.array(zod.string()),
+  "methods": zod.array(zod.string())
 })
 export const ListDomainNodesResponse = zod.array(ListDomainNodesResponseItem)
 
@@ -205,7 +209,8 @@ export const UpdateDomainNodeBody = zod.object({
   "status": zod.enum(['draft', 'validated', 'needs-review']).optional(),
   "x": zod.number().optional(),
   "y": zod.number().optional(),
-  "tags": zod.array(zod.string()).optional()
+  "tags": zod.array(zod.string()).optional(),
+  "methods": zod.array(zod.string()).optional()
 })
 
 export const UpdateDomainNodeResponse = zod.object({
@@ -217,7 +222,8 @@ export const UpdateDomainNodeResponse = zod.object({
   "status": zod.enum(['draft', 'validated', 'needs-review']),
   "x": zod.number(),
   "y": zod.number(),
-  "tags": zod.array(zod.string())
+  "tags": zod.array(zod.string()),
+  "methods": zod.array(zod.string())
 })
 
 

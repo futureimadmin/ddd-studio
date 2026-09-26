@@ -18,4 +18,5 @@ export interface DomainNodeUpdate {
   x?: number;
   y?: number;
   tags?: string[];
+  methods?: string[];
 }

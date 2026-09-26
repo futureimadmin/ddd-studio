@@ -297,7 +297,7 @@ components:
         color: { type: string }
     DomainNode:
       type: object
-      required: [id, contextId, kind, name, description, status, x, y, tags]
+      required: [id, contextId, kind, name, description, status, x, y, tags, methods]
       properties:
         id: { type: string }
         contextId: { type: string }
@@ -314,9 +314,12 @@ components:
         tags:
           type: array
           items: { type: string }
+        methods:
+          type: array
+          items: { type: string }
     DomainNodeInput:
       type: object
-      required: [contextId, kind, name, description, status, x, y, tags]
+      required: [contextId, kind, name, description, status, x, y, tags, methods]
       properties:
         contextId: { type: string }
         kind:
@@ -330,6 +333,9 @@ components:
         x: { type: number }
         y: { type: number }
         tags:
+          type: array
+          items: { type: string }
+        methods:
           type: array
           items: { type: string }
     DomainNodeUpdate:
@@ -347,6 +353,9 @@ components:
         x: { type: number }
         y: { type: number }
         tags:
+          type: array
+          items: { type: string }
+        methods:
           type: array
           items: { type: string }
     Relationship:

@@ -59,6 +59,7 @@ type DomainNode = {
   x: number;
   y: number;
   tags: string[];
+  methods: string[];
 };
 
 type RelationType =
@@ -148,6 +149,7 @@ const nodes: DomainNode[] = [
     x: 24,
     y: 28,
     tags: ["core", "transactional"],
+    methods: ["place()", "addLineItem()", "cancel()"],
   },
   {
     id: "node-order-root",
@@ -159,6 +161,7 @@ const nodes: DomainNode[] = [
     x: 34,
     y: 45,
     tags: ["root"],
+    methods: ["assertInvariants()", "publishEvents()"],
   },
   {
     id: "node-place-order",
@@ -170,6 +173,7 @@ const nodes: DomainNode[] = [
     x: 16,
     y: 18,
     tags: ["event-storming"],
+    methods: [],
   },
   {
     id: "node-order-placed",
@@ -181,6 +185,7 @@ const nodes: DomainNode[] = [
     x: 50,
     y: 20,
     tags: ["event-storming", "integration"],
+    methods: [],
   },
   {
     id: "node-order-repo",
@@ -192,6 +197,7 @@ const nodes: DomainNode[] = [
     x: 20,
     y: 66,
     tags: ["port"],
+    methods: ["findById()", "save()"],
   },
   {
     id: "node-fulfillment",
@@ -203,6 +209,7 @@ const nodes: DomainNode[] = [
     x: 68,
     y: 38,
     tags: ["application"],
+    methods: ["reserveStock()", "handleOrderPlaced()"],
   },
   {
     id: "node-stock",
@@ -214,6 +221,7 @@ const nodes: DomainNode[] = [
     x: 82,
     y: 54,
     tags: ["root", "inventory"],
+    methods: ["reserve()", "release()", "availableQuantity()"],
   },
   {
     id: "node-payment",
@@ -225,6 +233,7 @@ const nodes: DomainNode[] = [
     x: 62,
     y: 70,
     tags: ["resource", "external"],
+    methods: ["authorize()", "capture()", "refund()"],
   },
   {
     id: "node-payment-api",
@@ -236,6 +245,7 @@ const nodes: DomainNode[] = [
     x: 78,
     y: 78,
     tags: ["api"],
+    methods: ["authorizePayment()", "capturePayment()"],
   },
 ];
 
