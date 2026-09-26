@@ -171,3 +171,61 @@ Bounded context
 | **Anti-corruption layer** | Node kind `anti-corruption-layer` plus relationship type `anti-corruption`. |
 | **Persistence** | Workspace JSON at `data/workspace.json` (or `DDD_DATA_DIR`). Survives API restarts. |
 
+---
+
+## AI capability — two named designers
+
+DDD Studio is a **design IDE**. AI proposes strategic and tactical models for the canvas; it does **not** generate application code.
+
+Both designers use the same contract:
+
+- **JSON Schema:** `lib/api-spec/schemas/ddd-domain-design.schema.json`
+- **Root shape:** `projectName` + **`boundedContexts` (list)** + optional `elements`, `relationships`, `glossary`
+
+| Designer | ID | When it runs | Role |
+|----------|-----|--------------|------|
+| **Gemini ADK Designer** | `gemini-adk` | `GOOGLE_GENAI_API_KEY` or `GEMINI_API_KEY` set (and `@google/adk` installed) | Live model via **Google ADK 2.x** + Gemini structured JSON (`outputSchema`) |
+| **Studio Sketch Designer** | `mock` | No key, ADK missing, or forced offline | Deterministic multi-context sketch for demos, CI, and local exploration |
+
+Both paths are intentional and first-class: live design when you have Gemini; sketch design when you do not.
+
+### API
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/ai/designers` | List named designers |
+| `GET /api/ai/domain-design-schema` | Schema metadata |
+| `POST /api/ai/generate-domain` | Run a designer; optionally apply to the workspace |
+
+```http
+POST /api/ai/generate-domain
+Content-Type: application/json
+
+{
+  "prompt": "SaaS billing with subscriptions, invoices, and dunning",
+  "apply": true,
+  "mode": "merge"
+}
+```
+
+Response includes `source` (`gemini-adk` | `mock`), `designer: { id, name, description }`, and `design` JSON.
+
+### UI
+
+Domain map toolbar → **AI design** → **Preview JSON** or **Generate & apply to map**.
+
+### Auth (Gemini ADK Designer only)
+
+```bash
+export GOOGLE_GENAI_API_KEY=your_key   # or GEMINI_API_KEY
+export GEMINI_MODEL=gemini-2.5-flash   # optional
+pnpm --filter @workspace/api-server add @google/adk@^2.0.0
+```
+
+### Implementation
+
+- Agent: `artifacts/api-server/src/ai/domain-designer-agent.ts`
+- Schema prompt: `artifacts/api-server/src/ai/domain-design-schema.ts`
+- Routes: `artifacts/api-server/src/routes/ai.ts`
+- Apply: `applyAiDomainDesign()` in `ddd.ts`
+

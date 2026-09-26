@@ -174,16 +174,35 @@ function normalizeDesign(raw: unknown): DomainDesign {
  * Run the ADK LlmAgent with structured output schema against Gemini.
  * Falls back to mockDomainDesign when credentials are missing.
  */
+/** Named AI designers — both are first-class design paths */
+export const AI_DESIGNERS = {
+  "gemini-adk": {
+    id: "gemini-adk" as const,
+    name: "Gemini ADK Designer",
+    description:
+      "Live multi-context DDD model via Google ADK 2.x + Gemini structured JSON output.",
+  },
+  mock: {
+    id: "mock" as const,
+    name: "Studio Sketch Designer",
+    description:
+      "Offline deterministic sketch of contexts, aggregates, events, and glossary for demos and CI.",
+  },
+} as const;
+
+export type AiDesignerId = keyof typeof AI_DESIGNERS;
+
 export async function generateDomainDesign(prompt: string): Promise<{
   design: DomainDesign;
-  source: "gemini-adk" | "mock";
+  source: AiDesignerId;
+  designer: (typeof AI_DESIGNERS)[AiDesignerId];
   model?: string;
 }> {
   const userPrompt = prompt.trim();
   if (!userPrompt) throw new Error("prompt is required");
 
   if (!hasGeminiCredentials()) {
-    return { design: mockDomainDesign(userPrompt), source: "mock" };
+    return { design: mockDomainDesign(userPrompt), source: "mock", designer: AI_DESIGNERS.mock };
   }
 
   if (!process.env.GOOGLE_GENAI_API_KEY && process.env.GEMINI_API_KEY) {
@@ -196,7 +215,7 @@ export async function generateDomainDesign(prompt: string): Promise<{
     adk = await import("@google/adk");
   } catch (err) {
     console.error("[ai] @google/adk not installed — using mock design", err);
-    return { design: mockDomainDesign(userPrompt), source: "mock" };
+    return { design: mockDomainDesign(userPrompt), source: "mock", designer: AI_DESIGNERS.mock };
   }
 
   const { LlmAgent, Runner, InMemoryRunner, InMemorySessionService } = adk;
@@ -250,5 +269,5 @@ export async function generateDomainDesign(prompt: string): Promise<{
   const raw = stateDesign ?? extractJsonObject(lastText);
   const design = normalizeDesign(typeof raw === "string" ? extractJsonObject(raw) : raw);
 
-  return { design, source: "gemini-adk", model: MODEL };
+  return { design, source: "gemini-adk", designer: AI_DESIGNERS["gemini-adk"], model: MODEL };
 }

@@ -21,7 +21,7 @@ router.post("/ai/generate-domain", async (req, res): Promise<void> => {
     const apply = Boolean(req.body?.apply);
     const mode = req.body?.mode === "replace" ? "replace" : "merge";
 
-    const { design, source, model } = await generateDomainDesign(prompt);
+    const { design, source, designer, model } = await generateDomainDesign(prompt);
 
     let workspace = null;
     if (apply) {
@@ -31,6 +31,7 @@ router.post("/ai/generate-domain", async (req, res): Promise<void> => {
     res.json({
       ok: true,
       source,
+      designer,
       model: model ?? null,
       design,
       applied: apply,
@@ -41,6 +42,28 @@ router.post("/ai/generate-domain", async (req, res): Promise<void> => {
     console.error("[ai/generate-domain]", err);
     res.status(500).json({ error: message });
   }
+});
+
+/** Named designers available for domain design */
+router.get("/ai/designers", (_req, res): void => {
+  res.json({
+    designers: [
+      {
+        id: "gemini-adk",
+        name: "Gemini ADK Designer",
+        description:
+          "Live multi-context DDD model via Google ADK 2.x + Gemini structured JSON.",
+        requiresApiKey: true,
+      },
+      {
+        id: "mock",
+        name: "Studio Sketch Designer",
+        description:
+          "Offline deterministic sketch for demos, CI, and keyless local work.",
+        requiresApiKey: false,
+      },
+    ],
+  });
 });
 
 /** Return the JSON Schema document used to constrain Gemini output (for clients / docs). */

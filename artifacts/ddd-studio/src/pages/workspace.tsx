@@ -291,16 +291,15 @@ export default function WorkspacePage() {
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'AI design failed');
       setAiPreview(JSON.stringify(body.design, null, 2));
+      const designerName =
+        body.designer?.name ??
+        (body.source === 'mock' ? 'Studio Sketch Designer' : 'Gemini ADK Designer');
       if (apply) {
         invalidateMap();
         setModal(null);
-        notify(
-          body.source === 'mock'
-            ? 'Mock design applied (set GOOGLE_GENAI_API_KEY for live Gemini)'
-            : 'AI design applied to the map',
-        );
+        notify(`${designerName}: applied to the map`);
       } else {
-        notify(body.source === 'mock' ? 'Mock design ready to apply' : 'Gemini design ready — review then Apply');
+        notify(`${designerName}: preview ready — review then Apply`);
       }
     } catch (e) {
       notify(e instanceof Error ? e.message : 'AI design failed');
@@ -1290,8 +1289,10 @@ export default function WorkspacePage() {
         <Modal title="AI domain design" eyebrow="gemini · adk 2.x" onClose={() => setModal(null)} testId="modal-ai-design">
           <div className="space-y-4">
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Describe the product or problem. Gemini (via Google ADK) returns a JSON model of bounded contexts,
-              elements, relationships, and glossary terms — then we place them on the designer.
+              Describe the product or problem. Two designers share the same JSON schema:
+              <strong className="text-foreground"> Gemini ADK Designer</strong> (live, needs API key) and
+              <strong className="text-foreground"> Studio Sketch Designer</strong> (offline mock).
+              Both emit bounded contexts, elements, relationships, and glossary for the canvas — design only, not code.
             </p>
             <Field
               label="Design prompt"
