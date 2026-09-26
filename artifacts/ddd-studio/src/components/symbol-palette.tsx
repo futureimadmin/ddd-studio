@@ -4,6 +4,7 @@ import {
   Circle,
   Command,
   Database,
+  GitBranch,
   Hexagon,
   Layers,
   Link2,
@@ -24,6 +25,9 @@ export const DOMAIN_KINDS = [
   { kind: 'service', label: 'Domain service', icon: Layers, hint: 'Cross-entity logic' },
   { kind: 'resource', label: 'Resource / API', icon: Boxes, hint: 'Exposed capability' },
   { kind: 'read-model', label: 'Read model', icon: Sparkles, hint: 'Query projection' },
+  { kind: 'anti-corruption-layer', label: 'Anti-corruption layer', icon: Shield, hint: 'Translate foreign models' },
+  { kind: 'saga', label: 'Saga', icon: GitBranch, hint: 'Long-running process' },
+  { kind: 'process-manager', label: 'Process manager', icon: GitBranch, hint: 'Orchestrates reactions' },
 ] as const;
 
 export const EVENT_KINDS = [
@@ -44,6 +48,14 @@ export const UML_RELATIONSHIPS = [
   { type: 'owns', label: 'Owns', symbol: '◆——▷', hint: 'Ownership' },
   { type: 'invokes', label: 'Invokes', symbol: '——▶', hint: 'Calls' },
   { type: 'exposed-by', label: 'Exposed by', symbol: '——▶', hint: 'API surface' },
+  { type: 'shared-kernel', label: 'Shared Kernel', symbol: 'SK', hint: 'Shared model subset' },
+  { type: 'customer-supplier', label: 'Customer–Supplier', symbol: 'C→S', hint: 'Upstream/downstream' },
+  { type: 'conformist', label: 'Conformist', symbol: 'CF', hint: 'Downstream conforms' },
+  { type: 'anti-corruption', label: 'Anti-corruption', symbol: 'ACL', hint: 'Translation layer link' },
+  { type: 'open-host-service', label: 'Open Host Service', symbol: 'OHS', hint: 'Published protocol' },
+  { type: 'published-language', label: 'Published Language', symbol: 'PL', hint: 'Shared interchange' },
+  { type: 'partnership', label: 'Partnership', symbol: 'P', hint: 'Coordinated success' },
+  { type: 'separate-ways', label: 'Separate Ways', symbol: 'SW', hint: 'No integration' },
 ] as const;
 
 type SymbolPaletteProps = {

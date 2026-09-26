@@ -156,3 +156,18 @@ Bounded context
 - **Designer** supports palette drag/click for elements and click-to-connect UML relationships.
 - **Event storming** is isolated so storm stickies do not clutter the structural domain topology.
 - Relationship **text labels are omitted on the designer** (UML symbols carry the meaning); labels appear on the **Context map** only.
+
+---
+
+## Advanced modeling (implemented gaps)
+
+| Capability | How it works |
+|------------|----------------|
+| **Invariants** | Aggregates / roots / sagas / ACLs store `invariants[]`. Marking status `validated` runs structural checks (e.g. aggregate must compose exactly one root). `GET /api/model/validate` and `POST /api/domain-nodes/:id/validate-invariants`. |
+| **Ubiquitous language** | **Glossary** page + `GET/POST/PATCH/DELETE /api/glossary`. Terms scoped to a context with aliases. |
+| **Formal context-map types** | Relationship types: `shared-kernel`, `customer-supplier`, `conformist`, `anti-corruption`, `open-host-service`, `published-language`, `partnership`, `separate-ways`. Labels auto-fill when empty. |
+| **Versioned domain events** | Events carry `eventVersion`, `eventPayloadSchema` (JSON Schema or prose), `eventCompatibility`. |
+| **Saga / process manager** | Node kinds `saga` and `process-manager`; validation warns if no `compensate()`. |
+| **Anti-corruption layer** | Node kind `anti-corruption-layer` plus relationship type `anti-corruption`. |
+| **Persistence** | Workspace JSON at `data/workspace.json` (or `DDD_DATA_DIR`). Survives API restarts. |
+

@@ -19,4 +19,8 @@ export interface DomainNode {
   y: number;
   tags: string[];
   methods: string[];
+  invariants?: string[];
+  eventVersion?: string;
+  eventPayloadSchema?: string;
+  eventCompatibility?: 'backward' | 'forward' | 'full' | 'none';
 }

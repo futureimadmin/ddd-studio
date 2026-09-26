@@ -33,20 +33,24 @@ export const GetWorkspaceResponse = zod.object({
   "nodes": zod.array(zod.object({
   "id": zod.string(),
   "contextId": zod.string(),
-  "kind": zod.enum(['aggregate', 'aggregate-root', 'entity', 'value-object', 'domain-event', 'command', 'policy', 'actor', 'read-model', 'repository', 'service', 'resource']),
+  "kind": zod.enum(['aggregate', 'aggregate-root', 'entity', 'value-object', 'domain-event', 'command', 'policy', 'actor', 'read-model', 'repository', 'service', 'resource', 'anti-corruption-layer', 'saga', 'process-manager']),
   "name": zod.string(),
   "description": zod.string(),
   "status": zod.enum(['draft', 'validated', 'needs-review']),
   "x": zod.number(),
   "y": zod.number(),
   "tags": zod.array(zod.string()),
-  "methods": zod.array(zod.string())
+  "methods": zod.array(zod.string()),
+  "invariants": zod.array(zod.string()).optional().default([]),
+  "eventVersion": zod.string().optional().default("1.0.0"),
+  "eventPayloadSchema": zod.string().optional().default(""),
+  "eventCompatibility": zod.enum(['backward', 'forward', 'full', 'none']).optional().default("backward")
 })),
   "relationships": zod.array(zod.object({
   "id": zod.string(),
   "sourceId": zod.string(),
   "targetId": zod.string(),
-  "type": zod.enum(['uses', 'aggregation', 'composition', 'generalization', 'specialization', 'publishes', 'subscribes', 'owns', 'invokes', 'exposed-by']),
+  "type": zod.enum(['uses', 'aggregation', 'composition', 'generalization', 'specialization', 'publishes', 'subscribes', 'owns', 'invokes', 'exposed-by', 'shared-kernel', 'customer-supplier', 'conformist', 'anti-corruption', 'open-host-service', 'published-language', 'partnership', 'separate-ways']),
   "label": zod.string(),
   "contextId": zod.string()
 })),
@@ -60,11 +64,20 @@ export const GetWorkspaceResponse = zod.object({
   "tableCount": zod.number().int(),
   "lastIntrospectedAt": zod.string().nullable()
 })),
+  "glossary": zod.array(zod.object({
+  "id": zod.string(),
+  "term": zod.string(),
+  "definition": zod.string(),
+  "contextId": zod.string().nullable(),
+  "aliases": zod.array(zod.string()),
+  "relatedNodeIds": zod.array(zod.string())
+})).optional().default([]),
   "stats": zod.object({
   "contexts": zod.number().int(),
   "nodes": zod.number().int(),
   "relationships": zod.number().int(),
-  "connections": zod.number().int()
+  "connections": zod.number().int(),
+  "glossaryTerms": zod.number().int().optional().default(0)
 })
 })
 
@@ -149,27 +162,35 @@ export const DeleteBoundedContextResponse = zod.void()
 
 export const CreateDomainNodeBody = zod.object({
   "contextId": zod.string(),
-  "kind": zod.enum(['aggregate', 'aggregate-root', 'entity', 'value-object', 'domain-event', 'command', 'policy', 'actor', 'read-model', 'repository', 'service', 'resource']),
+  "kind": zod.enum(['aggregate', 'aggregate-root', 'entity', 'value-object', 'domain-event', 'command', 'policy', 'actor', 'read-model', 'repository', 'service', 'resource', 'anti-corruption-layer', 'saga', 'process-manager']),
   "name": zod.string().min(1),
   "description": zod.string(),
   "status": zod.enum(['draft', 'validated', 'needs-review']),
   "x": zod.number(),
   "y": zod.number(),
   "tags": zod.array(zod.string()),
-  "methods": zod.array(zod.string())
+  "methods": zod.array(zod.string()),
+  "invariants": zod.array(zod.string()).optional().default([]),
+  "eventVersion": zod.string().optional().default("1.0.0"),
+  "eventPayloadSchema": zod.string().optional().default(""),
+  "eventCompatibility": zod.enum(['backward', 'forward', 'full', 'none']).optional().default("backward")
 })
 
 export const CreateDomainNodeResponse = zod.object({
   "id": zod.string(),
   "contextId": zod.string(),
-  "kind": zod.enum(['aggregate', 'aggregate-root', 'entity', 'value-object', 'domain-event', 'command', 'policy', 'actor', 'read-model', 'repository', 'service', 'resource']),
+  "kind": zod.enum(['aggregate', 'aggregate-root', 'entity', 'value-object', 'domain-event', 'command', 'policy', 'actor', 'read-model', 'repository', 'service', 'resource', 'anti-corruption-layer', 'saga', 'process-manager']),
   "name": zod.string(),
   "description": zod.string(),
   "status": zod.enum(['draft', 'validated', 'needs-review']),
   "x": zod.number(),
   "y": zod.number(),
   "tags": zod.array(zod.string()),
-  "methods": zod.array(zod.string())
+  "methods": zod.array(zod.string()),
+  "invariants": zod.array(zod.string()).optional().default([]),
+  "eventVersion": zod.string().optional().default("1.0.0"),
+  "eventPayloadSchema": zod.string().optional().default(""),
+  "eventCompatibility": zod.enum(['backward', 'forward', 'full', 'none']).optional().default("backward")
 })
 
 
@@ -179,14 +200,18 @@ export const CreateDomainNodeResponse = zod.object({
 export const ListDomainNodesResponseItem = zod.object({
   "id": zod.string(),
   "contextId": zod.string(),
-  "kind": zod.enum(['aggregate', 'aggregate-root', 'entity', 'value-object', 'domain-event', 'command', 'policy', 'actor', 'read-model', 'repository', 'service', 'resource']),
+  "kind": zod.enum(['aggregate', 'aggregate-root', 'entity', 'value-object', 'domain-event', 'command', 'policy', 'actor', 'read-model', 'repository', 'service', 'resource', 'anti-corruption-layer', 'saga', 'process-manager']),
   "name": zod.string(),
   "description": zod.string(),
   "status": zod.enum(['draft', 'validated', 'needs-review']),
   "x": zod.number(),
   "y": zod.number(),
   "tags": zod.array(zod.string()),
-  "methods": zod.array(zod.string())
+  "methods": zod.array(zod.string()),
+  "invariants": zod.array(zod.string()).optional().default([]),
+  "eventVersion": zod.string().optional().default("1.0.0"),
+  "eventPayloadSchema": zod.string().optional().default(""),
+  "eventCompatibility": zod.enum(['backward', 'forward', 'full', 'none']).optional().default("backward")
 })
 export const ListDomainNodesResponse = zod.array(ListDomainNodesResponseItem)
 
@@ -203,7 +228,7 @@ export const UpdateDomainNodeParams = zod.object({
 
 export const UpdateDomainNodeBody = zod.object({
   "contextId": zod.string().optional(),
-  "kind": zod.enum(['aggregate', 'aggregate-root', 'entity', 'value-object', 'domain-event', 'command', 'policy', 'actor', 'read-model', 'repository', 'service', 'resource']).optional(),
+  "kind": zod.enum(['aggregate', 'aggregate-root', 'entity', 'value-object', 'domain-event', 'command', 'policy', 'actor', 'read-model', 'repository', 'service', 'resource', 'anti-corruption-layer', 'saga', 'process-manager']).optional(),
   "name": zod.string().min(1).optional(),
   "description": zod.string().optional(),
   "status": zod.enum(['draft', 'validated', 'needs-review']).optional(),
@@ -216,14 +241,18 @@ export const UpdateDomainNodeBody = zod.object({
 export const UpdateDomainNodeResponse = zod.object({
   "id": zod.string(),
   "contextId": zod.string(),
-  "kind": zod.enum(['aggregate', 'aggregate-root', 'entity', 'value-object', 'domain-event', 'command', 'policy', 'actor', 'read-model', 'repository', 'service', 'resource']),
+  "kind": zod.enum(['aggregate', 'aggregate-root', 'entity', 'value-object', 'domain-event', 'command', 'policy', 'actor', 'read-model', 'repository', 'service', 'resource', 'anti-corruption-layer', 'saga', 'process-manager']),
   "name": zod.string(),
   "description": zod.string(),
   "status": zod.enum(['draft', 'validated', 'needs-review']),
   "x": zod.number(),
   "y": zod.number(),
   "tags": zod.array(zod.string()),
-  "methods": zod.array(zod.string())
+  "methods": zod.array(zod.string()),
+  "invariants": zod.array(zod.string()).optional().default([]),
+  "eventVersion": zod.string().optional().default("1.0.0"),
+  "eventPayloadSchema": zod.string().optional().default(""),
+  "eventCompatibility": zod.enum(['backward', 'forward', 'full', 'none']).optional().default("backward")
 })
 
 
@@ -243,7 +272,7 @@ export const DeleteDomainNodeResponse = zod.void()
 export const CreateRelationshipBody = zod.object({
   "sourceId": zod.string(),
   "targetId": zod.string(),
-  "type": zod.enum(['uses', 'aggregation', 'composition', 'generalization', 'specialization', 'publishes', 'subscribes', 'owns', 'invokes', 'exposed-by']),
+  "type": zod.enum(['uses', 'aggregation', 'composition', 'generalization', 'specialization', 'publishes', 'subscribes', 'owns', 'invokes', 'exposed-by', 'shared-kernel', 'customer-supplier', 'conformist', 'anti-corruption', 'open-host-service', 'published-language', 'partnership', 'separate-ways']),
   "label": zod.string(),
   "contextId": zod.string()
 })
@@ -252,7 +281,7 @@ export const CreateRelationshipResponse = zod.object({
   "id": zod.string(),
   "sourceId": zod.string(),
   "targetId": zod.string(),
-  "type": zod.enum(['uses', 'aggregation', 'composition', 'generalization', 'specialization', 'publishes', 'subscribes', 'owns', 'invokes', 'exposed-by']),
+  "type": zod.enum(['uses', 'aggregation', 'composition', 'generalization', 'specialization', 'publishes', 'subscribes', 'owns', 'invokes', 'exposed-by', 'shared-kernel', 'customer-supplier', 'conformist', 'anti-corruption', 'open-host-service', 'published-language', 'partnership', 'separate-ways']),
   "label": zod.string(),
   "contextId": zod.string()
 })
@@ -265,7 +294,7 @@ export const ListRelationshipsResponseItem = zod.object({
   "id": zod.string(),
   "sourceId": zod.string(),
   "targetId": zod.string(),
-  "type": zod.enum(['uses', 'aggregation', 'composition', 'generalization', 'specialization', 'publishes', 'subscribes', 'owns', 'invokes', 'exposed-by']),
+  "type": zod.enum(['uses', 'aggregation', 'composition', 'generalization', 'specialization', 'publishes', 'subscribes', 'owns', 'invokes', 'exposed-by', 'shared-kernel', 'customer-supplier', 'conformist', 'anti-corruption', 'open-host-service', 'published-language', 'partnership', 'separate-ways']),
   "label": zod.string(),
   "contextId": zod.string()
 })
@@ -354,7 +383,7 @@ export const IntrospectSchemaConnectionResponse = zod.object({
   "id": zod.string(),
   "sourceId": zod.string(),
   "targetId": zod.string(),
-  "type": zod.enum(['uses', 'aggregation', 'composition', 'generalization', 'specialization', 'publishes', 'subscribes', 'owns', 'invokes', 'exposed-by']),
+  "type": zod.enum(['uses', 'aggregation', 'composition', 'generalization', 'specialization', 'publishes', 'subscribes', 'owns', 'invokes', 'exposed-by', 'shared-kernel', 'customer-supplier', 'conformist', 'anti-corruption', 'open-host-service', 'published-language', 'partnership', 'separate-ways']),
   "label": zod.string(),
   "contextId": zod.string()
 })),

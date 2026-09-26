@@ -57,6 +57,14 @@ const relationColors: Record<string, string> = {
   owns: 'hsl(var(--chart-2))',
   invokes: 'hsl(var(--primary))',
   'exposed-by': 'hsl(var(--chart-4))',
+  'shared-kernel': 'hsl(var(--chart-2))',
+  'customer-supplier': 'hsl(var(--primary))',
+  conformist: 'hsl(var(--muted-foreground))',
+  'anti-corruption': 'hsl(var(--destructive))',
+  'open-host-service': 'hsl(var(--chart-3))',
+  'published-language': 'hsl(var(--chart-3))',
+  partnership: 'hsl(var(--accent))',
+  'separate-ways': 'hsl(var(--border))',
 };
 
 function getGridPosition(index: number, count: number) {
@@ -128,6 +136,17 @@ function markersForType(type: string): { start?: string; end?: string; dash?: st
     case 'invokes':
     case 'exposed-by':
       return { end: 'url(#uml-arrow-filled)' };
+    case 'shared-kernel':
+    case 'partnership':
+      return { end: 'url(#uml-arrow)', start: 'url(#uml-arrow)' };
+    case 'customer-supplier':
+    case 'conformist':
+    case 'open-host-service':
+    case 'published-language':
+    case 'anti-corruption':
+      return { end: 'url(#uml-arrow-filled)', dash: '2 4' };
+    case 'separate-ways':
+      return { dash: '1 6' };
     default:
       return { end: 'url(#uml-arrow)' };
   }

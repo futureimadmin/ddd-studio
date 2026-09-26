@@ -49,6 +49,9 @@ const nodeKinds = [
   'repository',
   'service',
   'resource',
+  'anti-corruption-layer',
+  'saga',
+  'process-manager',
 ] as const;
 const relationshipTypes = [
   'uses',
@@ -61,7 +64,25 @@ const relationshipTypes = [
   'owns',
   'invokes',
   'exposed-by',
+  'shared-kernel',
+  'customer-supplier',
+  'conformist',
+  'anti-corruption',
+  'open-host-service',
+  'published-language',
+  'partnership',
+  'separate-ways',
 ] as const;
+const CONTEXT_MAP_TYPES = new Set([
+  'shared-kernel',
+  'customer-supplier',
+  'conformist',
+  'anti-corruption',
+  'open-host-service',
+  'published-language',
+  'partnership',
+  'separate-ways',
+]);
 const contextColors = ['#e7a94b', '#3e9b9a', '#d8755e', '#6588c5', '#8c71b7'];
 const EVENT_KIND_SET = new Set(EVENT_KINDS.map((k) => k.kind));
 
@@ -815,11 +836,15 @@ export default function WorkspacePage() {
               onClose={() => setSelectedId(null)}
               onSave={(data) =>
                 updateNode.mutate(
-                  { id: selectedNode.id, data },
+                  { id: selectedNode.id, data: data as never },
                   {
                     onSuccess: () => {
                       invalidateMap();
                       notify('Element updated');
+                    },
+                    onError: (err: unknown) => {
+                      const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: string }).message) : 'Update failed';
+                      notify(msg);
                     },
                   },
                 )
@@ -1282,6 +1307,10 @@ function NodeInspector({
     status: string;
     tags: string[];
     methods?: string[];
+    invariants?: string[];
+    eventVersion?: string;
+    eventPayloadSchema?: string;
+    eventCompatibility?: string;
   };
   contexts: Array<{ id: string; name: string }>;
   nodes: Array<{ id: string; name: string }>;
@@ -1293,6 +1322,10 @@ function NodeInspector({
     status: 'draft' | 'validated' | 'needs-review';
     tags: string[];
     methods: string[];
+    invariants: string[];
+    eventVersion: string;
+    eventPayloadSchema: string;
+    eventCompatibility: 'backward' | 'forward' | 'full' | 'none';
   }) => void;
   onDelete: () => void;
   onDeleteRelationship: (id: string) => void;
@@ -1302,12 +1335,20 @@ function NodeInspector({
   const [status, setStatus] = useState(node.status);
   const [tags, setTags] = useState(node.tags.join(', '));
   const [methods, setMethods] = useState((node.methods ?? []).join('\n'));
+  const [invariants, setInvariants] = useState((node.invariants ?? []).join('\n'));
+  const [eventVersion, setEventVersion] = useState(node.eventVersion ?? '1.0.0');
+  const [eventPayloadSchema, setEventPayloadSchema] = useState(node.eventPayloadSchema ?? '');
+  const [eventCompatibility, setEventCompatibility] = useState(node.eventCompatibility ?? 'backward');
   useEffect(() => {
     setName(node.name);
     setDescription(node.description);
     setStatus(node.status);
     setTags(node.tags.join(', '));
     setMethods((node.methods ?? []).join('\n'));
+    setInvariants((node.invariants ?? []).join('\n'));
+    setEventVersion(node.eventVersion ?? '1.0.0');
+    setEventPayloadSchema(node.eventPayloadSchema ?? '');
+    setEventCompatibility(node.eventCompatibility ?? 'backward');
   }, [node]);
   const context = contexts.find((item) => item.id === node.contextId);
   const related = relationships.filter((item) => item.sourceId === node.id || item.targetId === node.id);
@@ -1355,6 +1396,43 @@ function NodeInspector({
           testId="input-inspector-methods"
           multiline
         />
+        {(node.kind === 'aggregate' || node.kind === 'aggregate-root' || node.kind === 'saga' || node.kind === 'process-manager' || node.kind === 'anti-corruption-layer') && (
+          <Field
+            label="Invariants"
+            value={invariants}
+            onChange={setInvariants}
+            placeholder="Business rules — one per line"
+            testId="input-inspector-invariants"
+            multiline
+          />
+        )}
+        {node.kind === 'domain-event' && (
+          <>
+            <Field label="Event version" value={eventVersion} onChange={setEventVersion} placeholder="1.0.0" testId="input-inspector-event-version" />
+            <label className="block">
+              <span className="mb-1.5 block font-mono-ui text-[10px] uppercase tracking-[.14em] text-muted-foreground">Compatibility</span>
+              <select
+                value={eventCompatibility}
+                onChange={(event) => setEventCompatibility(event.target.value)}
+                data-testid="select-inspector-event-compat"
+                className="h-10 w-full border border-input bg-background px-3 text-sm outline-none focus:border-primary"
+              >
+                <option value="backward">backward</option>
+                <option value="forward">forward</option>
+                <option value="full">full</option>
+                <option value="none">none</option>
+              </select>
+            </label>
+            <Field
+              label="Payload contract (JSON Schema or prose)"
+              value={eventPayloadSchema}
+              onChange={setEventPayloadSchema}
+              placeholder='{"type":"object","properties":{...}}'
+              testId="input-inspector-event-schema"
+              multiline
+            />
+          </>
+        )}
         <label className="block">
           <span className="mb-1.5 block font-mono-ui text-[10px] uppercase tracking-[.14em] text-muted-foreground">Status</span>
           <select
@@ -1415,6 +1493,10 @@ function NodeInspector({
             status: status as 'draft' | 'validated' | 'needs-review',
             tags: parseList(tags),
             methods: parseList(methods),
+            invariants: parseList(invariants),
+            eventVersion: eventVersion.trim() || '1.0.0',
+            eventPayloadSchema,
+            eventCompatibility: eventCompatibility as 'backward' | 'forward' | 'full' | 'none',
           })
         }
         disabled={!name.trim()}
