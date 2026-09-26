@@ -14,6 +14,7 @@ import {
   Trash2,
   X,
   Zap,
+  Sparkles,
 } from 'lucide-react';
 import {
   getGetWorkspaceQueryKey,
@@ -189,7 +190,7 @@ export default function WorkspacePage() {
   const [search, setSearch] = useState('');
   const [zoom, setZoom] = useState(1);
   const [viewTab, setViewTab] = useState<ViewTab>('designer');
-  const [modal, setModal] = useState<'context' | 'node' | 'relationship' | 'context-relationship' | null>(null);
+  const [modal, setModal] = useState<'context' | 'node' | 'relationship' | 'context-relationship' | 'ai' | null>(null);
   const [editingContext, setEditingContext] = useState<string | null>(null);
   const [nodeForm, setNodeForm] = useState({
     contextId: '',
@@ -215,6 +216,9 @@ export default function WorkspacePage() {
     label: '',
   });
   const [toast, setToast] = useState('');
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiPreview, setAiPreview] = useState<string>('');
   const [connectFromId, setConnectFromId] = useState<string | null>(null);
   const [activeRelationType, setActiveRelationType] = useState<string | null>(null);
 
@@ -273,6 +277,38 @@ export default function WorkspacePage() {
     setToast(message);
     window.setTimeout(() => setToast(''), 2600);
   };
+
+  const runAiDesign = async (apply: boolean) => {
+    if (!aiPrompt.trim()) return;
+    setAiBusy(true);
+    setAiPreview('');
+    try {
+      const res = await fetch('/api/ai/generate-domain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: aiPrompt.trim(), apply, mode: 'merge' }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'AI design failed');
+      setAiPreview(JSON.stringify(body.design, null, 2));
+      if (apply) {
+        invalidateMap();
+        setModal(null);
+        notify(
+          body.source === 'mock'
+            ? 'Mock design applied (set GOOGLE_GENAI_API_KEY for live Gemini)'
+            : 'AI design applied to the map',
+        );
+      } else {
+        notify(body.source === 'mock' ? 'Mock design ready to apply' : 'Gemini design ready — review then Apply');
+      }
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'AI design failed');
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
 
   const openNewNode = (kind = 'aggregate') => {
     setNodeForm({
@@ -549,6 +585,17 @@ export default function WorkspacePage() {
             className="inline-flex items-center gap-2 border border-border bg-card px-3.5 py-2.5 text-sm font-medium transition-colors hover:border-primary hover:text-primary"
           >
             <Plus size={15} /> Add context
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAiPreview('');
+              setModal('ai');
+            }}
+            data-testid="button-ai-design"
+            className="inline-flex items-center gap-2 border border-primary/40 bg-primary/10 px-3.5 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/15"
+          >
+            <Sparkles size={15} /> AI design
           </button>
           {viewTab === 'context-map' && (
             <button
@@ -1239,6 +1286,53 @@ export default function WorkspacePage() {
           </div>
         </Modal>
       )}
+      {modal === 'ai' && (
+        <Modal title="AI domain design" eyebrow="gemini · adk 2.x" onClose={() => setModal(null)} testId="modal-ai-design">
+          <div className="space-y-4">
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Describe the product or problem. Gemini (via Google ADK) returns a JSON model of bounded contexts,
+              elements, relationships, and glossary terms — then we place them on the designer.
+            </p>
+            <Field
+              label="Design prompt"
+              value={aiPrompt}
+              onChange={setAiPrompt}
+              placeholder="e.g. Multi-tenant SaaS billing with subscriptions, invoices, and dunning across Finance and Customer Success contexts"
+              testId="input-ai-prompt"
+              multiline
+            />
+            {aiPreview && (
+              <pre
+                className="max-h-48 overflow-auto border border-border bg-muted/40 p-3 font-mono-ui text-[10px] leading-relaxed"
+                data-testid="text-ai-preview"
+              >
+                {aiPreview}
+              </pre>
+            )}
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                disabled={aiBusy || !aiPrompt.trim()}
+                onClick={() => void runAiDesign(false)}
+                data-testid="button-ai-preview"
+                className="flex-1 border border-border py-2.5 text-sm font-medium hover:border-primary disabled:opacity-50"
+              >
+                {aiBusy ? 'Working…' : 'Preview JSON'}
+              </button>
+              <button
+                type="button"
+                disabled={aiBusy || !aiPrompt.trim()}
+                onClick={() => void runAiDesign(true)}
+                data-testid="button-ai-apply"
+                className="flex-1 bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+              >
+                {aiBusy ? 'Applying…' : 'Generate & apply to map'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
     </div>
   );
 }

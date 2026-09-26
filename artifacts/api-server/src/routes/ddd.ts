@@ -1190,4 +1190,129 @@ router.post("/schema-connections/:id/introspect", (req, res): void => {
   res.json(IntrospectSchemaConnectionResponse.parse(snapshot));
 });
 
+
+export type AiDomainDesign = {
+  projectName: string;
+  summary?: string;
+  boundedContexts: Array<{ key: string; name: string; purpose: string; color: string }>;
+  elements?: Array<{
+    key: string;
+    contextKey: string;
+    kind: NodeKind;
+    name: string;
+    description?: string;
+    methods?: string[];
+    invariants?: string[];
+    eventVersion?: string;
+    eventPayloadSchema?: string;
+    eventCompatibility?: "backward" | "forward" | "full" | "none";
+    tags?: string[];
+    x?: number;
+    y?: number;
+  }>;
+  relationships?: Array<{
+    sourceKey: string;
+    targetKey: string;
+    type: RelationType;
+    label?: string;
+  }>;
+  glossary?: Array<{
+    term: string;
+    definition: string;
+    contextKey?: string | null;
+    aliases?: string[];
+  }>;
+};
+
+/** Apply an AI-generated design into the live workspace (design IDE). */
+export function applyAiDomainDesign(design: AiDomainDesign, mode: "merge" | "replace" = "merge") {
+  if (mode === "replace") {
+    contexts.length = 0;
+    nodes.length = 0;
+    relationships.length = 0;
+    glossary.length = 0;
+  }
+
+  if (design.projectName?.trim()) projectName = design.projectName.trim();
+
+  const contextIdByKey = new Map<string, string>();
+  for (const ctx of design.boundedContexts ?? []) {
+    const existing = contexts.find((c) => c.name === ctx.name || c.id === `context-${ctx.key}`);
+    if (existing) {
+      existing.purpose = ctx.purpose || existing.purpose;
+      existing.color = ctx.color || existing.color;
+      contextIdByKey.set(ctx.key, existing.id);
+    } else {
+      const newCtx: Context = {
+        id: id("context"),
+        name: ctx.name,
+        purpose: ctx.purpose || "",
+        color: ctx.color || "#6588c5",
+        nodeCount: 0,
+        relationshipCount: 0,
+      };
+      contexts.push(newCtx);
+      contextIdByKey.set(ctx.key, newCtx.id);
+    }
+  }
+
+  const nodeIdByKey = new Map<string, string>();
+  let i = 0;
+  for (const el of design.elements ?? []) {
+    const contextId = contextIdByKey.get(el.contextKey);
+    if (!contextId) continue;
+    const node = normalizeNode({
+      id: id("node"),
+      contextId,
+      kind: el.kind,
+      name: el.name,
+      description: el.description ?? "",
+      status: "draft",
+      x: typeof el.x === "number" ? el.x : 15 + ((i * 17) % 70),
+      y: typeof el.y === "number" ? el.y : 15 + ((i * 23) % 70),
+      tags: el.tags ?? ["ai-generated"],
+      methods: el.methods ?? [],
+      invariants: el.invariants ?? [],
+      eventVersion: el.eventVersion ?? "1.0.0",
+      eventPayloadSchema: el.eventPayloadSchema ?? "",
+      eventCompatibility: el.eventCompatibility ?? "backward",
+    });
+    nodes.push(node);
+    nodeIdByKey.set(el.key, node.id);
+    i += 1;
+  }
+
+  for (const rel of design.relationships ?? []) {
+    const sourceId = nodeIdByKey.get(rel.sourceKey);
+    const targetId = nodeIdByKey.get(rel.targetKey);
+    if (!sourceId || !targetId) continue;
+    const source = nodes.find((n) => n.id === sourceId);
+    relationships.push({
+      id: id("rel"),
+      sourceId,
+      targetId,
+      type: rel.type,
+      label: rel.label ?? "",
+      contextId: source?.contextId ?? contexts[0]?.id ?? "",
+    });
+  }
+
+  for (const term of design.glossary ?? []) {
+    const contextId = term.contextKey ? contextIdByKey.get(term.contextKey) ?? null : null;
+    glossary.push({
+      id: id("term"),
+      term: term.term,
+      definition: term.definition,
+      contextId,
+      aliases: term.aliases ?? [],
+      relatedNodeIds: [],
+    });
+  }
+
+  refreshCounts();
+  persist();
+  return workspacePayload();
+}
+
+
 export default router;
