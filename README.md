@@ -1,0 +1,158 @@
+# DDD Studio
+
+An IDE for **Domain-Driven Design**: bounded contexts, domain model elements, UML relationships, event storming, and schema reverse-engineering.
+
+## Run locally
+
+```bash
+pnpm install
+pnpm --filter @workspace/api-server run dev   # API on PORT (default from env)
+pnpm --filter @workspace/ddd-studio run dev   # UI
+```
+
+Required env for the API: `PORT`, and optionally `DATABASE_URL` for persistence.
+
+---
+
+## Modeling workflow
+
+Follow these steps from empty workspace through to a domain API surface.
+
+### 1. Create bounded contexts
+
+1. Open **Domain map** (home).
+2. Click **Add context**.
+3. Enter:
+   - **Name** — e.g. `Orders`, `Inventory`, `Payments`
+   - **Purpose** — the business capability this boundary owns
+   - **Boundary color** — visual identity on the map
+4. Save. Repeat for each strategic boundary.
+
+**Context map view:** switch to the **Context map** tab. You see only contexts (no aggregates/entities). Relationships between contexts appear with **text labels** (the only place labels are drawn).
+
+To link two contexts:
+
+1. Ensure each context has at least one model element (step 2).
+2. Click **Link contexts**.
+3. Choose from-context, relationship type, to-context, and a label such as `Customer-Supplier`, `ACL`, or `Shared Kernel`.
+4. Save. The edge is labeled on the Context map only.
+
+---
+
+### 2. Design the domain model (Domain designer)
+
+1. Open the **Domain designer** tab.
+2. Use the **left palette** (or **Add model element**) to add:
+   - Aggregate / Aggregate root
+   - Entity / Value object
+   - Repository / Domain service / Resource (API) / Read model
+3. Assign each element to a bounded context.
+4. Optionally set methods (e.g. `place()`, `cancel()`) and status (`draft` → `validated`).
+
+#### UML relationships (no text labels)
+
+In the designer, edges use **UML symbols only** so the canvas stays readable:
+
+| Type | Symbol | Meaning |
+|------|--------|---------|
+| Composition / Owns | ◆——▷ | Strong has-a; owner controls lifecycle |
+| Aggregation | ◇——▷ | Shared has-a |
+| Generalization / Specialization | ——△ | Is-a |
+| Uses / Subscribes | ····▷ | Dependency / reaction |
+| Publishes / Invokes / Exposed-by | ——▶ | Emits, calls, or surfaces |
+
+**How to connect:**
+
+1. In the palette, click a UML relationship type (e.g. **Composition** for Aggregate has-a Root).
+2. Click the **source** element, then the **target** element.
+3. Or use **Connect (form)** to pick source, type, and target from lists.
+
+Example: Aggregate **Order** composition → Aggregate root **OrderRoot**.
+
+---
+
+### 3. Event storming (separate tab)
+
+1. Open the **Event storming** tab.
+2. Events, commands, policies, and actors live **only** on this board (they are filtered out of the Domain designer).
+3. Use the palette or **Add event sticky** to place:
+   - **Domain event** (orange) — something that happened
+   - **Command** (blue) — intent to change state
+   - **Policy** (violet) — “when X then Y”
+   - **Actor** (green) — person or external system
+4. Select a sticky in the inspector to refine name, description, and status.
+5. Link storm elements to domain model via the same relationship API if needed (e.g. command **uses** aggregate, root **publishes** event).
+
+---
+
+### 4. Inspect and refine
+
+- Click any node, context, or sticky to open the **inspector**.
+- Edit name, description, methods, tags, status.
+- Delete obsolete relationships from the inspector list.
+- Use context filters and search to focus a large map.
+
+---
+
+### 5. Schema connections (reverse engineering)
+
+1. Go to **Schema connections** in the sidebar.
+2. **Add connection** — PostgreSQL, MySQL, Oracle, or Db2.
+3. Enter host, database, credentials.
+4. **Introspect schema** to discover tables and foreign keys.
+5. Use discoveries as candidates for resources, aggregates, and relationships on the domain map.
+
+---
+
+### 6. Domain API surface
+
+1. Mark service/resource nodes that represent published capabilities (kind **resource** or **service**).
+2. Relate them with **exposed-by** / **invokes** to aggregates and application services.
+3. Align resource names with tables from schema introspection where useful.
+4. Validate language in the inspector (`validated` status).
+5. The OpenAPI-backed API (`/api/...`) already exposes CRUD for contexts, nodes, and relationships — treat the living model as the contract for downstream code generation or gateway design.
+
+Typical path:
+
+```
+Bounded context
+  → Aggregate + Aggregate root (composition)
+  → Commands / Domain events (event storming)
+  → Repository + Domain service
+  → Resource / Domain API (exposed-by)
+  → Schema connection (optional reverse map)
+```
+
+---
+
+## UI overview
+
+| Tab / area | What you see | Labels on edges? |
+|------------|--------------|------------------|
+| **Domain designer** | Aggregates, entities, services, UML links | No — UML markers only |
+| **Context map** | Bounded contexts + inter-context links | Yes |
+| **Event storming** | Commands, events, policies, actors | N/A (stickies) |
+| **Schema connections** | DB profiles + introspection | — |
+| **Workspace settings** | Grid / snap preferences | — |
+
+---
+
+## API surface (backend)
+
+| Resource | Endpoints |
+|----------|-----------|
+| Workspace snapshot | `GET /api/workspace` |
+| Bounded contexts | `GET/POST /api/bounded-contexts`, `PATCH/DELETE /api/bounded-contexts/:id` |
+| Domain nodes | `GET/POST /api/domain-nodes`, `PATCH/DELETE /api/domain-nodes/:id` |
+| Relationships | `GET/POST /api/relationships`, `DELETE /api/relationships/:id` |
+| Schema connections | `GET/POST /api/schema-connections`, `POST .../:id/introspect` |
+| Health | `GET /api/healthz` |
+
+---
+
+## Design choices (this branch)
+
+- **Context map** is a first-class tab: contexts only, with labeled inter-context relationships.
+- **Designer** supports palette drag/click for elements and click-to-connect UML relationships.
+- **Event storming** is isolated so storm stickies do not clutter the structural domain topology.
+- Relationship **text labels are omitted on the designer** (UML symbols carry the meaning); labels appear on the **Context map** only.
