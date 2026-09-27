@@ -105,6 +105,29 @@ router.post("/ai/generate-code", async (req, res): Promise<void> => {
   }
 });
 
+/** ADC / Vertex readiness for design + codegen */
+router.get("/ai/auth-status", async (_req, res): Promise<void> => {
+  try {
+    const { ensureVertexAdc } = await import("../ai/google-adc");
+    const status = await ensureVertexAdc();
+    res.json({
+      ok: status.ready,
+      mode: status.mode,
+      project: status.project ?? null,
+      location: status.location ?? null,
+      reason: status.reason ?? null,
+      hint: status.ready
+        ? "Vertex AI via Application Default Credentials"
+        : "Run: gcloud auth application-default login && export GOOGLE_CLOUD_PROJECT=...",
+    });
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      error: err instanceof Error ? err.message : "auth status failed",
+    });
+  }
+});
+
 /** Named designers available for domain design */
 router.get("/ai/designers", (_req, res): void => {
   res.json({
@@ -113,8 +136,9 @@ router.get("/ai/designers", (_req, res): void => {
         id: "gemini-adk",
         name: "Gemini ADK Designer",
         description:
-          "Live multi-context DDD model via Google ADK 2.x + Gemini structured JSON.",
-        requiresApiKey: true,
+          "Live multi-context DDD model via Google ADK 2.x + Gemini on Vertex AI (Application Default Credentials).",
+        requiresApiKey: false,
+        requiresAdc: true,
       },
       {
         id: "mock",
@@ -134,7 +158,8 @@ router.get("/ai/code-generators", (_req, res): void => {
       id: g.id,
       name: g.name,
       description: g.description,
-      requiresApiKey: g.id === "gemini-adk",
+      requiresApiKey: false,
+      requiresAdc: g.id === "gemini-adk",
     })),
   });
 });

@@ -1426,7 +1426,7 @@ const runAiDesign = async (apply: boolean) => {
           <div className="space-y-4">
             <p className="text-sm leading-relaxed text-muted-foreground">
               Describe the product or problem. Two designers share the same JSON schema:
-              <strong className="text-foreground"> Gemini ADK Designer</strong> (live, needs API key) and
+              <strong className="text-foreground"> Gemini ADK Designer</strong> (live, Vertex ADC) and
               <strong className="text-foreground"> Studio Sketch Designer</strong> (offline mock).
               Both emit bounded contexts, elements, relationships, and glossary for the canvas — design only, not code.
             </p>
@@ -1471,7 +1471,7 @@ const runAiDesign = async (apply: boolean) => {
       )}
 
       {modal === 'codegen' && (
-        <Modal title="Generate code" eyebrow="export json → gemini adk" onClose={() => setModal(null)} testId="modal-codegen">
+        <Modal title="Generate code" eyebrow="export json → vertex adc · gemini adk" onClose={() => setModal(null)} testId="modal-codegen">
           <div className="space-y-4">
             <p className="text-sm leading-relaxed text-muted-foreground">
               Exports the live domain model as stable JSON, then runs{' '}

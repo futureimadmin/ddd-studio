@@ -3,6 +3,7 @@
  * Design remains the source of truth; code is a projection of the JSON model.
  */
 import type { DomainExportDocument } from "../routes/ddd";
+import { ensureVertexAdc } from "./google-adc";
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
@@ -10,7 +11,7 @@ export const CODE_GENERATORS = {
   "gemini-adk": {
     id: "gemini-adk" as const,
     name: "Gemini ADK Codegen",
-    description: "Generate source files from the domain export JSON via Google ADK 2.x + Gemini.",
+    description: "Generate source files from the domain export JSON via Google ADK 2.x + Gemini on Vertex AI (ADC).",
   },
   mock: {
     id: "mock" as const,
@@ -42,13 +43,6 @@ export type CodegenOptions = {
   scope?: "full" | "commands" | "events" | "read-models" | "sagas";
 };
 
-function hasGeminiCredentials(): boolean {
-  return Boolean(
-    process.env.GOOGLE_GENAI_API_KEY ||
-      process.env.GEMINI_API_KEY ||
-      (process.env.GOOGLE_GENAI_USE_VERTEXAI === "TRUE" && process.env.GOOGLE_CLOUD_PROJECT),
-  );
-}
 
 function slugify(name: string): string {
   return (
@@ -421,7 +415,9 @@ export async function generateCodeFromExport(
 }> {
   const sketch = mockCodegen(doc, options);
 
-  if (!hasGeminiCredentials()) {
+  const adc = await ensureVertexAdc();
+  if (!adc.ready) {
+    console.warn("[ai/generate-code] Vertex ADC not ready — sketch codegen:", adc.reason);
     return { result: sketch, source: "mock", generator: CODE_GENERATORS.mock };
   }
 

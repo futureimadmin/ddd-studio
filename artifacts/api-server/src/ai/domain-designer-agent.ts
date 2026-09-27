@@ -10,19 +10,12 @@ import {
   DESIGNER_SYSTEM_INSTRUCTION,
   type DomainDesign,
 } from "./domain-design-schema";
+import { ensureVertexAdc } from "./google-adc";
 
 const APP_NAME = "ddd-studio-designer";
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
-function hasGeminiCredentials(): boolean {
-  return Boolean(
-    process.env.GOOGLE_GENAI_API_KEY ||
-      process.env.GEMINI_API_KEY ||
-      (process.env.GOOGLE_GENAI_USE_VERTEXAI === "TRUE" && process.env.GOOGLE_CLOUD_PROJECT),
-  );
-}
-
-/** Deterministic offline design when no API key is configured (local demos). */
+/** Deterministic offline design when ADC is unavailable (local demos / DDD_AI_OFFLINE). */
 export function mockDomainDesign(prompt: string): DomainDesign {
   const slug =
     prompt
@@ -32,7 +25,7 @@ export function mockDomainDesign(prompt: string): DomainDesign {
       .slice(0, 24) || "domain";
   return {
     projectName: `AI design: ${slug}`,
-    summary: `Mock design derived from: "${prompt.slice(0, 160)}". Set GOOGLE_GENAI_API_KEY to use live Gemini via ADK.`,
+    summary: `Mock design derived from: "${prompt.slice(0, 160)}". Configure ADC (gcloud auth application-default login + GOOGLE_CLOUD_PROJECT) for live Gemini via Vertex.`,
     boundedContexts: [
       {
         key: "core",
@@ -180,7 +173,7 @@ export const AI_DESIGNERS = {
     id: "gemini-adk" as const,
     name: "Gemini ADK Designer",
     description:
-      "Live multi-context DDD model via Google ADK 2.x + Gemini structured JSON output.",
+      "Live multi-context DDD model via Google ADK 2.x + Gemini on Vertex AI (Application Default Credentials).",
   },
   mock: {
     id: "mock" as const,
@@ -201,12 +194,10 @@ export async function generateDomainDesign(prompt: string): Promise<{
   const userPrompt = prompt.trim();
   if (!userPrompt) throw new Error("prompt is required");
 
-  if (!hasGeminiCredentials()) {
+  const adc = await ensureVertexAdc();
+  if (!adc.ready) {
+    console.warn("[ai/design] Vertex ADC not ready — sketch designer:", adc.reason);
     return { design: mockDomainDesign(userPrompt), source: "mock", designer: AI_DESIGNERS.mock };
-  }
-
-  if (!process.env.GOOGLE_GENAI_API_KEY && process.env.GEMINI_API_KEY) {
-    process.env.GOOGLE_GENAI_API_KEY = process.env.GEMINI_API_KEY;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

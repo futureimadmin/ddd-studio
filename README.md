@@ -184,7 +184,7 @@ Both designers use the same contract:
 
 | Designer | ID | When it runs | Role |
 |----------|-----|--------------|------|
-| **Gemini ADK Designer** | `gemini-adk` | `GOOGLE_GENAI_API_KEY` or `GEMINI_API_KEY` set (and `@google/adk` installed) | Live model via **Google ADK 2.x** + Gemini structured JSON (`outputSchema`) |
+| **Gemini ADK Designer** | `gemini-adk` | Vertex AI + **Application Default Credentials** (`GOOGLE_CLOUD_PROJECT`, `gcloud auth application-default login` or SA) | Live model via **Google ADK 2.x** + Gemini structured JSON on Vertex |
 | **Studio Sketch Designer** | `mock` | No key, ADK missing, or forced offline | Deterministic multi-context sketch for demos, CI, and local exploration |
 
 Both paths are intentional and first-class: live design when you have Gemini; sketch design when you do not.
@@ -214,13 +214,25 @@ Response includes `source` (`gemini-adk` | `mock`), `designer: { id, name, descr
 
 Domain map toolbar → **AI design** → **Preview JSON** or **Generate & apply to map**.
 
-### Auth (Gemini ADK Designer only)
+### Auth (Vertex AI + Application Default Credentials)
+
+Design and codegen use **ADC**, not API keys:
 
 ```bash
-export GOOGLE_GENAI_API_KEY=your_key   # or GEMINI_API_KEY
-export GEMINI_MODEL=gemini-2.5-flash   # optional
-pnpm --filter @workspace/api-server add @google/adk@^2.0.0
+gcloud auth application-default login
+export GOOGLE_CLOUD_PROJECT=your-project-id
+export GOOGLE_CLOUD_LOCATION=us-central1   # optional, default us-central1
+# GOOGLE_GENAI_USE_VERTEXAI is set automatically to TRUE by the server
+
+# Production / CI: service account
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json
+
+# Optional offline force (sketch only)
+# export DDD_AI_OFFLINE=1
 ```
+
+`GET /api/ai/auth-status` reports whether ADC is ready.
+
 
 ### Implementation
 
@@ -295,7 +307,7 @@ If `export` is omitted, the live workspace is exported automatically.
 
 | Generator | When |
 |-----------|------|
-| **Gemini ADK Codegen** | `GOOGLE_GENAI_API_KEY` / `GEMINI_API_KEY` set |
+| **Gemini ADK Codegen** | Vertex AI + **Application Default Credentials** |
 | **Studio Sketch Codegen** | Offline deterministic TypeScript stubs from the export |
 
 UI: toolbar **Generate code** → choose stack/scope → download codegen JSON bundle (`files[]` with path + content).
