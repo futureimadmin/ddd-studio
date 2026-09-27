@@ -259,3 +259,46 @@ Select a sticky on the **Event storming** tab to highlight the publisher/listene
 
 Validation: exactly one `handles` edge per command; query handlers must not sit on the command side.
 
+---
+
+## Export JSON + Gemini codegen
+
+Design is the source of truth. Code is a **projection** of the export document.
+
+### Export
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/workspace/export` | Stable versioned JSON (`schemaVersion`, contexts, elements, relationships, glossary, processChains, cqrs, sagas) |
+
+UI: toolbar **Export JSON** downloads the file.
+
+### Code generation
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/ai/generate-code` | Consume export JSON → source files via ADK / sketch |
+| `GET /api/ai/code-generators` | List **Gemini ADK Codegen** and **Studio Sketch Codegen** |
+
+Body (optional fields):
+
+```json
+{
+  "stack": "typescript-express",
+  "packageName": "my-domain",
+  "scope": "full",
+  "includeTests": false
+}
+```
+
+If `export` is omitted, the live workspace is exported automatically.
+
+| Generator | When |
+|-----------|------|
+| **Gemini ADK Codegen** | `GOOGLE_GENAI_API_KEY` / `GEMINI_API_KEY` set |
+| **Studio Sketch Codegen** | Offline deterministic TypeScript stubs from the export |
+
+UI: toolbar **Generate code** → choose stack/scope → download codegen JSON bundle (`files[]` with path + content).
+
+Flow: **Design → Export JSON → Generate code with Gemini**.
+

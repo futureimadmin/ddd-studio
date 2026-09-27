@@ -1013,6 +1013,230 @@ function schemaFor(connection: Connection): SchemaSnapshot {
   };
 }
 
+
+/** Stable, versioned domain model export for download and Gemini codegen. */
+export const EXPORT_SCHEMA_VERSION = "1.0.0";
+
+export type DomainExportDocument = {
+  schemaVersion: string;
+  exportedAt: string;
+  projectName: string;
+  summary: string;
+  boundedContexts: Array<{
+    id: string;
+    name: string;
+    purpose: string;
+    color: string;
+    nodeCount: number;
+    relationshipCount: number;
+  }>;
+  elements: Array<{
+    id: string;
+    contextId: string;
+    kind: NodeKind;
+    name: string;
+    description: string;
+    status: string;
+    tags: string[];
+    methods: string[];
+    invariants: string[];
+    eventVersion?: string;
+    eventPayloadSchema?: string;
+    eventCompatibility?: string;
+    sagaStyle?: string;
+    cqrsSide?: string;
+    x?: number;
+    y?: number;
+  }>;
+  relationships: Array<{
+    id: string;
+    sourceId: string;
+    targetId: string;
+    type: RelationType;
+    label: string;
+    contextId?: string;
+  }>;
+  glossary: Array<{
+    id: string;
+    term: string;
+    definition: string;
+    contextId: string | null;
+    aliases: string[];
+    relatedNodeIds: string[];
+  }>;
+  processChains: Array<{
+    id: string;
+    kind: "triggers" | "reacts-to" | "publishes" | "subscribes" | "orchestrates" | "choreographs" | "projects-to" | "handles";
+    sourceId: string;
+    sourceName: string;
+    sourceKind: string;
+    targetId: string;
+    targetName: string;
+    targetKind: string;
+    label: string;
+  }>;
+  cqrs: {
+    commands: Array<{ id: string; name: string; contextId: string }>;
+    commandHandlers: Array<{ id: string; name: string; contextId: string; handlesCommandIds: string[] }>;
+    queries: Array<{ id: string; name: string; contextId: string }>;
+    readModels: Array<{ id: string; name: string; contextId: string; projectedFromEventIds: string[] }>;
+  };
+  sagas: {
+    orchestration: Array<{ id: string; name: string; contextId: string; description: string }>;
+    choreography: Array<{ id: string; name: string; contextId: string; description: string }>;
+  };
+  stats: {
+    contexts: number;
+    nodes: number;
+    relationships: number;
+    glossaryTerms: number;
+  };
+};
+
+const PROCESS_EDGE_TYPES = new Set([
+  "triggers",
+  "reacts-to",
+  "publishes",
+  "subscribes",
+  "orchestrates",
+  "choreographs",
+  "projects-to",
+  "handles",
+]);
+
+export function buildDomainExport(): DomainExportDocument {
+  refreshCounts();
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+
+  const processChains = relationships
+    .filter((r) => PROCESS_EDGE_TYPES.has(r.type))
+    .map((r) => {
+      const s = nodeById.get(r.sourceId);
+      const t = nodeById.get(r.targetId);
+      return {
+        id: r.id,
+        kind: r.type as DomainExportDocument["processChains"][number]["kind"],
+        sourceId: r.sourceId,
+        sourceName: s?.name ?? r.sourceId,
+        sourceKind: s?.kind ?? "unknown",
+        targetId: r.targetId,
+        targetName: t?.name ?? r.targetId,
+        targetKind: t?.kind ?? "unknown",
+        label: r.label || r.type,
+      };
+    });
+
+  const commands = nodes
+    .filter((n) => n.kind === "command")
+    .map((n) => ({ id: n.id, name: n.name, contextId: n.contextId }));
+
+  const commandHandlers = nodes
+    .filter((n) => n.kind === "command-handler")
+    .map((n) => ({
+      id: n.id,
+      name: n.name,
+      contextId: n.contextId,
+      handlesCommandIds: relationships
+        .filter((r) => r.sourceId === n.id && r.type === "handles")
+        .map((r) => r.targetId),
+    }));
+
+  const queries = nodes
+    .filter((n) => n.kind === "query-handler")
+    .map((n) => ({ id: n.id, name: n.name, contextId: n.contextId }));
+
+  const readModels = nodes
+    .filter((n) => n.kind === "read-model")
+    .map((n) => ({
+      id: n.id,
+      name: n.name,
+      contextId: n.contextId,
+      projectedFromEventIds: relationships
+        .filter((r) => r.targetId === n.id && r.type === "projects-to")
+        .map((r) => r.sourceId),
+    }));
+
+  const orchestration = nodes
+    .filter((n) => (n.kind === "saga" || n.kind === "process-manager") && n.sagaStyle === "orchestration")
+    .map((n) => ({
+      id: n.id,
+      name: n.name,
+      contextId: n.contextId,
+      description: n.description,
+    }));
+
+  const choreography = nodes
+    .filter(
+      (n) =>
+        n.sagaStyle === "choreography" ||
+        (n.kind === "policy" && relationships.some((r) => r.sourceId === n.id && (r.type === "reacts-to" || r.type === "choreographs"))),
+    )
+    .map((n) => ({
+      id: n.id,
+      name: n.name,
+      contextId: n.contextId,
+      description: n.description,
+    }));
+
+  return {
+    schemaVersion: EXPORT_SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    projectName,
+    summary: `DDD Studio export of "${projectName}" — design model for codegen.`,
+    boundedContexts: contexts.map((c) => ({
+      id: c.id,
+      name: c.name,
+      purpose: c.purpose,
+      color: c.color,
+      nodeCount: c.nodeCount,
+      relationshipCount: c.relationshipCount,
+    })),
+    elements: nodes.map((n) => ({
+      id: n.id,
+      contextId: n.contextId,
+      kind: n.kind,
+      name: n.name,
+      description: n.description,
+      status: n.status,
+      tags: n.tags,
+      methods: n.methods,
+      invariants: n.invariants,
+      eventVersion: n.eventVersion,
+      eventPayloadSchema: n.eventPayloadSchema,
+      eventCompatibility: n.eventCompatibility,
+      sagaStyle: n.sagaStyle,
+      cqrsSide: n.cqrsSide,
+      x: n.x,
+      y: n.y,
+    })),
+    relationships: relationships.map((r) => ({
+      id: r.id,
+      sourceId: r.sourceId,
+      targetId: r.targetId,
+      type: r.type,
+      label: r.label,
+      contextId: r.contextId,
+    })),
+    glossary: glossary.map((g) => ({
+      id: g.id,
+      term: g.term,
+      definition: g.definition,
+      contextId: g.contextId,
+      aliases: g.aliases,
+      relatedNodeIds: g.relatedNodeIds,
+    })),
+    processChains,
+    cqrs: { commands, commandHandlers, queries, readModels },
+    sagas: { orchestration, choreography },
+    stats: {
+      contexts: contexts.length,
+      nodes: nodes.length,
+      relationships: relationships.length,
+      glossaryTerms: glossary.length,
+    },
+  };
+}
+
 function workspacePayload() {
   refreshCounts();
   return {
@@ -1061,6 +1285,17 @@ router.get("/workspace", (_req, res): void => {
     // Tolerate schema lag on optional glossary/stats fields
     res.json(payload);
   }
+});
+
+/** Stable JSON export of the full design model (download + codegen input). */
+router.get("/workspace/export", (_req, res): void => {
+  const doc = buildDomainExport();
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="ddd-export-${doc.projectName.replace(/[^a-z0-9_-]+/gi, "-").toLowerCase() || "model"}.json"`,
+  );
+  res.json(doc);
 });
 
 router.get("/model/validate", (_req, res): void => {

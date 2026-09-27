@@ -230,7 +230,7 @@ export default function WorkspacePage() {
   const [search, setSearch] = useState('');
   const [zoom, setZoom] = useState(1);
   const [viewTab, setViewTab] = useState<ViewTab>('designer');
-  const [modal, setModal] = useState<'context' | 'node' | 'relationship' | 'context-relationship' | 'ai' | null>(null);
+  const [modal, setModal] = useState<'context' | 'node' | 'relationship' | 'context-relationship' | 'ai' | 'codegen' | null>(null);
   const [editingContext, setEditingContext] = useState<string | null>(null);
   const [nodeForm, setNodeForm] = useState({
     contextId: '',
@@ -258,6 +258,12 @@ export default function WorkspacePage() {
   const [toast, setToast] = useState('');
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [codeStack, setCodeStack] = useState('typescript-express');
+  const [codePackage, setCodePackage] = useState('');
+  const [codeScope, setCodeScope] = useState<'full' | 'commands' | 'events' | 'read-models' | 'sagas'>('full');
+  const [codeIncludeTests, setCodeIncludeTests] = useState(false);
+  const [codeResult, setCodeResult] = useState<string | null>(null);
   const [aiPreview, setAiPreview] = useState<string>('');
   const [connectFromId, setConnectFromId] = useState<string | null>(null);
   const [activeRelationType, setActiveRelationType] = useState<string | null>(null);
@@ -322,7 +328,85 @@ export default function WorkspacePage() {
     window.setTimeout(() => setToast(''), 2600);
   };
 
-  const runAiDesign = async (apply: boolean) => {
+  
+  const downloadExport = async () => {
+    try {
+      const res = await fetch('/api/workspace/export');
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const cd = res.headers.get('Content-Disposition') || '';
+      const match = /filename="([^"]+)"/.exec(cd);
+      const filename = match?.[1] || 'ddd-export.json';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      notify('Domain model exported as JSON');
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Export failed');
+    }
+  };
+
+  const runCodegen = async () => {
+    setCodeBusy(true);
+    setCodeResult(null);
+    try {
+      const res = await fetch('/api/ai/generate-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stack: codeStack,
+          packageName: codePackage.trim() || undefined,
+          scope: codeScope,
+          includeTests: codeIncludeTests,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Code generation failed');
+      const files = body.codegen?.files ?? [];
+      const preview = files
+        .slice(0, 12)
+        .map((f: { path: string; description?: string }) => `// ${f.path}${f.description ? ` — ${f.description}` : ''}`)
+        .join('\n');
+      const full = JSON.stringify(
+        {
+          generator: body.generator,
+          source: body.source,
+          model: body.model,
+          summary: body.codegen?.summary,
+          fileCount: files.length,
+          files: files.map((f: { path: string; language: string; description: string; content: string }) => ({
+            path: f.path,
+            language: f.language,
+            description: f.description,
+            content: f.content,
+          })),
+        },
+        null,
+        2,
+      );
+      setCodeResult(full);
+      const genName = body.generator?.name ?? body.source;
+      notify(`${genName}: ${files.length} files — ${body.codegen?.summary || 'done'}`);
+      // Offer download of full codegen result
+      const blob = new Blob([full], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ddd-codegen-${(body.codegen?.packageName || 'domain').replace(/[^a-z0-9_-]+/gi, '-')}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      void preview;
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Code generation failed');
+    } finally {
+      setCodeBusy(false);
+    }
+  };
+
+const runAiDesign = async (apply: boolean) => {
     if (!aiPrompt.trim()) return;
     setAiBusy(true);
     setAiPreview('');
@@ -639,6 +723,25 @@ export default function WorkspacePage() {
             className="inline-flex items-center gap-2 border border-primary/40 bg-primary/10 px-3.5 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/15"
           >
             <Sparkles size={15} /> AI design
+          </button>
+          <button
+            type="button"
+            onClick={() => void downloadExport()}
+            data-testid="button-export-json"
+            className="inline-flex items-center gap-1.5 border border-border px-3 py-1.5 text-xs font-medium hover:border-primary"
+          >
+            Export JSON
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setCodeResult(null);
+              setModal('codegen');
+            }}
+            data-testid="button-generate-code"
+            className="inline-flex items-center gap-1.5 border border-border px-3 py-1.5 text-xs font-medium hover:border-primary"
+          >
+            Generate code
           </button>
           {viewTab === 'context-map' && (
             <button
@@ -1366,6 +1469,94 @@ export default function WorkspacePage() {
           </div>
         </Modal>
       )}
+
+      {modal === 'codegen' && (
+        <Modal title="Generate code" eyebrow="export json → gemini adk" onClose={() => setModal(null)} testId="modal-codegen">
+          <div className="space-y-4">
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Exports the live domain model as stable JSON, then runs{' '}
+              <strong className="text-foreground">Gemini ADK Codegen</strong> (or{' '}
+              <strong className="text-foreground">Studio Sketch Codegen</strong> offline) to project source files.
+              Design stays the source of truth.
+            </p>
+            <label className="block">
+              <span className="mb-1.5 block font-mono-ui text-[10px] uppercase tracking-[.14em] text-muted-foreground">Stack</span>
+              <select
+                value={codeStack}
+                onChange={(e) => setCodeStack(e.target.value)}
+                data-testid="select-code-stack"
+                className="h-10 w-full border border-input bg-background px-3 text-sm"
+              >
+                <option value="typescript-express">TypeScript · Express</option>
+                <option value="typescript-nestjs">TypeScript · NestJS</option>
+                <option value="csharp-dotnet">C# · .NET</option>
+                <option value="java-spring">Java · Spring</option>
+              </select>
+            </label>
+            <Field
+              label="Package name"
+              value={codePackage}
+              onChange={setCodePackage}
+              placeholder="optional — defaults from project name"
+              testId="input-code-package"
+            />
+            <label className="block">
+              <span className="mb-1.5 block font-mono-ui text-[10px] uppercase tracking-[.14em] text-muted-foreground">Scope</span>
+              <select
+                value={codeScope}
+                onChange={(e) => setCodeScope(e.target.value as typeof codeScope)}
+                data-testid="select-code-scope"
+                className="h-10 w-full border border-input bg-background px-3 text-sm"
+              >
+                <option value="full">Full model</option>
+                <option value="commands">Commands & handlers</option>
+                <option value="events">Domain events</option>
+                <option value="read-models">Read models & queries</option>
+                <option value="sagas">Sagas & policies</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={codeIncludeTests}
+                onChange={(e) => setCodeIncludeTests(e.target.checked)}
+                data-testid="checkbox-code-tests"
+              />
+              Include test placeholders
+            </label>
+            {codeResult && (
+              <pre
+                className="max-h-56 overflow-auto border border-border bg-muted/40 p-3 font-mono-ui text-[10px] leading-relaxed"
+                data-testid="text-codegen-preview"
+              >
+                {codeResult.slice(0, 8000)}
+                {codeResult.length > 8000 ? '\n…' : ''}
+              </pre>
+            )}
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                disabled={codeBusy}
+                onClick={() => void downloadExport()}
+                data-testid="button-codegen-export-only"
+                className="flex-1 border border-border py-2.5 text-sm font-medium hover:border-primary disabled:opacity-50"
+              >
+                Download export JSON only
+              </button>
+              <button
+                type="button"
+                disabled={codeBusy}
+                onClick={() => void runCodegen()}
+                data-testid="button-codegen-run"
+                className="flex-1 bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+              >
+                {codeBusy ? 'Generating…' : 'Generate code (JSON bundle)'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
 
     </div>
   );

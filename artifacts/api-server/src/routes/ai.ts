@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { generateDomainDesign } from "../ai/domain-designer-agent";
-import { applyAiDomainDesign, type AiDomainDesign } from "./ddd";
+import { generateCodeFromExport, CODE_GENERATORS } from "../ai/code-generator-agent";
+import { applyAiDomainDesign, buildDomainExport, type AiDomainDesign } from "./ddd";
 
 const router: IRouter = Router();
 
@@ -44,6 +45,66 @@ router.post("/ai/generate-domain", async (req, res): Promise<void> => {
   }
 });
 
+/**
+ * POST /api/ai/generate-code
+ * Body: {
+ *   stack?: string,
+ *   packageName?: string,
+ *   includeTests?: boolean,
+ *   scope?: "full" | "commands" | "events" | "read-models" | "sagas",
+ *   export?: object  // optional; defaults to live workspace export
+ * }
+ *
+ * Consumes the stable domain export JSON and produces source files via Gemini ADK 2.x
+ * (or Studio Sketch Codegen offline).
+ */
+router.post("/ai/generate-code", async (req, res): Promise<void> => {
+  try {
+    const options = {
+      stack: typeof req.body?.stack === "string" ? req.body.stack : "typescript-express",
+      packageName: typeof req.body?.packageName === "string" ? req.body.packageName : undefined,
+      includeTests: Boolean(req.body?.includeTests),
+      scope:
+        req.body?.scope === "commands" ||
+        req.body?.scope === "events" ||
+        req.body?.scope === "read-models" ||
+        req.body?.scope === "sagas"
+          ? req.body.scope
+          : ("full" as const),
+    };
+
+    const doc =
+      req.body?.export && typeof req.body.export === "object"
+        ? (req.body.export as ReturnType<typeof buildDomainExport>)
+        : buildDomainExport();
+
+    if (!doc.elements?.length && !doc.boundedContexts?.length) {
+      res.status(400).json({ error: "Export is empty — design a model first" });
+      return;
+    }
+
+    const { result, source, generator, model } = await generateCodeFromExport(doc, options);
+
+    res.json({
+      ok: true,
+      source,
+      generator,
+      model: model ?? null,
+      exportMeta: {
+        schemaVersion: doc.schemaVersion,
+        exportedAt: doc.exportedAt,
+        projectName: doc.projectName,
+        stats: doc.stats,
+      },
+      codegen: result,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Code generation failed";
+    console.error("[ai/generate-code]", err);
+    res.status(500).json({ error: message });
+  }
+});
+
 /** Named designers available for domain design */
 router.get("/ai/designers", (_req, res): void => {
   res.json({
@@ -66,14 +127,25 @@ router.get("/ai/designers", (_req, res): void => {
   });
 });
 
-/** Return the JSON Schema document used to constrain Gemini output (for clients / docs). */
+/** Named code generators */
+router.get("/ai/code-generators", (_req, res): void => {
+  res.json({
+    generators: Object.values(CODE_GENERATORS).map((g) => ({
+      id: g.id,
+      name: g.name,
+      description: g.description,
+      requiresApiKey: g.id === "gemini-adk",
+    })),
+  });
+});
+
+/** Return the JSON Schema document used to constrain Gemini design output (for clients / docs). */
 router.get("/ai/domain-design-schema", (_req, res): void => {
   res.json({
-    title: "DDDDomainDesign",
-    description: "Schema used as Gemini structured output for multi-context DDD design",
+    name: "ddd-domain-design",
+    description:
+      "Multi bounded-context DDD design document (boundedContexts list + elements + relationships + glossary).",
     schemaPath: "lib/api-spec/schemas/ddd-domain-design.schema.json",
-    required: ["projectName", "boundedContexts"],
-    note: "boundedContexts is a list of strategic boundaries; elements and relationships fill the designer.",
   });
 });
 
