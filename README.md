@@ -1,316 +1,150 @@
 # DDD Studio
 
-An IDE for **Domain-Driven Design**: bounded contexts, domain model elements, UML relationships, event storming, and schema reverse-engineering.
+An IDE for **Domain-Driven Design**: bounded contexts, a domain model designer, a context map, event storming, a ubiquitous-language glossary, database reverse-engineering, and **Gemini-assisted domain design and code generation**.
 
-## Run locally
+Node.js only — one TypeScript codebase in two folders:
+
+```
+ddd-studio/
+├─ server/   Express 5 API (TypeScript). Persistence, validation, introspection, Gemini agents.
+└─ client/   React 19 + Vite UI (TypeScript, Tailwind 4).
+```
+
+## Quick start
+
+Requires **Node 22+** (developed on 24).
 
 ```bash
-pnpm install
-pnpm --filter @workspace/api-server run dev   # API on PORT (default from env)
-pnpm --filter @workspace/ddd-studio run dev   # UI
+npm install
+npm run dev          # API on :8080, UI on http://localhost:5173 (the UI proxies /api)
 ```
 
-Required env for the API: `PORT`, and optionally `DATABASE_URL` for persistence.
+Production-style, single process on http://localhost:8080:
 
----
-
-## Modeling workflow
-
-Follow these steps from empty workspace through to a domain API surface.
-
-### 1. Create bounded contexts
-
-1. Open **Domain map** (home).
-2. Click **Add context**.
-3. Enter:
-   - **Name** — e.g. `Orders`, `Inventory`, `Payments`
-   - **Purpose** — the business capability this boundary owns
-   - **Boundary color** — visual identity on the map
-4. Save. Repeat for each strategic boundary.
-
-**Context map view:** switch to the **Context map** tab. You see only contexts (no aggregates/entities). Relationships between contexts appear with **text labels** (the only place labels are drawn).
-
-To link two contexts:
-
-1. Ensure each context has at least one model element (step 2).
-2. Click **Link contexts**.
-3. Choose from-context, relationship type, to-context, and a label such as `Customer-Supplier`, `ACL`, or `Shared Kernel`.
-4. Save. The edge is labeled on the Context map only.
-
----
-
-### 2. Design the domain model (Domain designer)
-
-1. Open the **Domain designer** tab.
-2. Use the **left palette** (or **Add model element**) to add:
-   - Aggregate / Aggregate root
-   - Entity / Value object
-   - Repository / Domain service / Resource (API) / Read model
-3. Assign each element to a bounded context.
-4. Optionally set methods (e.g. `place()`, `cancel()`) and status (`draft` → `validated`).
-
-#### UML relationships (no text labels)
-
-In the designer, edges use **UML symbols only** so the canvas stays readable:
-
-| Type | Symbol | Meaning |
-|------|--------|---------|
-| Composition / Owns | ◆——▷ | Strong has-a; owner controls lifecycle |
-| Aggregation | ◇——▷ | Shared has-a |
-| Generalization / Specialization | ——△ | Is-a |
-| Uses / Subscribes | ····▷ | Dependency / reaction |
-| Publishes / Invokes / Exposed-by | ——▶ | Emits, calls, or surfaces |
-
-**How to connect:**
-
-1. In the palette, click a UML relationship type (e.g. **Composition** for Aggregate has-a Root).
-2. Click the **source** element, then the **target** element.
-3. Or use **Connect (form)** to pick source, type, and target from lists.
-
-Example: Aggregate **Order** composition → Aggregate root **OrderRoot**.
-
----
-
-### 3. Event storming (separate tab)
-
-1. Open the **Event storming** tab.
-2. Events, commands, policies, and actors live **only** on this board (they are filtered out of the Domain designer).
-3. Use the palette or **Add event sticky** to place:
-   - **Domain event** (orange) — something that happened
-   - **Command** (blue) — intent to change state
-   - **Policy** (violet) — “when X then Y”
-   - **Actor** (green) — person or external system
-4. Select a sticky in the inspector to refine name, description, and status.
-5. Link storm elements to domain model via the same relationship API if needed (e.g. command **uses** aggregate, root **publishes** event).
-
----
-
-### 4. Inspect and refine
-
-- Click any node, context, or sticky to open the **inspector**.
-- Edit name, description, methods, tags, status.
-- Delete obsolete relationships from the inspector list.
-- Use context filters and search to focus a large map.
-
----
-
-### 5. Schema connections (reverse engineering)
-
-1. Go to **Schema connections** in the sidebar.
-2. **Add connection** — PostgreSQL, MySQL, Oracle, or Db2.
-3. Enter host, database, credentials.
-4. **Introspect schema** to discover tables and foreign keys.
-5. Use discoveries as candidates for resources, aggregates, and relationships on the domain map.
-
----
-
-### 6. Domain API surface
-
-1. Mark service/resource nodes that represent published capabilities (kind **resource** or **service**).
-2. Relate them with **exposed-by** / **invokes** to aggregates and application services.
-3. Align resource names with tables from schema introspection where useful.
-4. Validate language in the inspector (`validated` status).
-5. The OpenAPI-backed API (`/api/...`) already exposes CRUD for contexts, nodes, and relationships — treat the living model as the contract for downstream code generation or gateway design.
-
-Typical path:
-
-```
-Bounded context
-  → Aggregate + Aggregate root (composition)
-  → Commands / Domain events (event storming)
-  → Repository + Domain service
-  → Resource / Domain API (exposed-by)
-  → Schema connection (optional reverse map)
+```bash
+npm run build        # builds client/dist and server/dist
+npm start            # the server also serves the built client
 ```
 
----
+Other scripts: `npm run typecheck`, `npm test` (server tests, fully offline).
 
-## UI overview
+## Configuration
 
-| Tab / area | What you see | Labels on edges? |
-|------------|--------------|------------------|
-| **Domain designer** | Aggregates, entities, services, UML links | No — UML markers only |
-| **Context map** | Bounded contexts + inter-context links | Yes |
-| **Event storming** | Commands, events, policies, actors | N/A (stickies) |
-| **Schema connections** | DB profiles + introspection | — |
-| **Workspace settings** | Grid / snap preferences | — |
+Set environment variables or copy `server/.env.example` to `server/.env` (real environment variables win).
 
----
+| Variable | Default | Purpose |
+|---|---|---|
+| `PORT` | `8080` | API port |
+| `DDD_DATA_DIR` | `server/data` | Where `workspace.json` is stored |
+| `GOOGLE_CLOUD_PROJECT` | from your ADC | Vertex AI project |
+| `GOOGLE_CLOUD_LOCATION` | `us-central1` | Vertex AI region |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Model used for design and codegen |
+| `DDD_AI_OFFLINE` | off | `1` forces the offline sketch designer/codegen |
+| `CORS_ORIGIN` | none | Only if the UI is hosted on a different origin |
+| `CLIENT_DIST` | `client/dist` | Built UI served by the API |
 
-## API surface (backend)
+## Gemini (Vertex AI + Application Default Credentials)
 
-| Resource | Endpoints |
-|----------|-----------|
-| Workspace snapshot | `GET /api/workspace` |
-| Bounded contexts | `GET/POST /api/bounded-contexts`, `PATCH/DELETE /api/bounded-contexts/:id` |
-| Domain nodes | `GET/POST /api/domain-nodes`, `PATCH/DELETE /api/domain-nodes/:id` |
-| Relationships | `GET/POST /api/relationships`, `DELETE /api/relationships/:id` |
-| Schema connections | `GET/POST /api/schema-connections`, `POST .../:id/introspect` |
-| Health | `GET /api/healthz` |
-
----
-
-## Design choices (this branch)
-
-- **Context map** is a first-class tab: contexts only, with labeled inter-context relationships.
-- **Designer** supports palette drag/click for elements and click-to-connect UML relationships.
-- **Event storming** is isolated so storm stickies do not clutter the structural domain topology.
-- Relationship **text labels are omitted on the designer** (UML symbols carry the meaning); labels appear on the **Context map** only.
-
----
-
-## Advanced modeling (implemented gaps)
-
-| Capability | How it works |
-|------------|----------------|
-| **Invariants** | Aggregates / roots / sagas / ACLs store `invariants[]`. Marking status `validated` runs structural checks (e.g. aggregate must compose exactly one root). `GET /api/model/validate` and `POST /api/domain-nodes/:id/validate-invariants`. |
-| **Ubiquitous language** | **Glossary** page + `GET/POST/PATCH/DELETE /api/glossary`. Terms scoped to a context with aliases. |
-| **Formal context-map types** | Relationship types: `shared-kernel`, `customer-supplier`, `conformist`, `anti-corruption`, `open-host-service`, `published-language`, `partnership`, `separate-ways`. Labels auto-fill when empty. |
-| **Versioned domain events** | Events carry `eventVersion`, `eventPayloadSchema` (JSON Schema or prose), `eventCompatibility`. |
-| **Saga / process manager** | Node kinds `saga` and `process-manager`; validation warns if no `compensate()`. |
-| **Anti-corruption layer** | Node kind `anti-corruption-layer` plus relationship type `anti-corruption`. |
-| **Persistence** | Workspace JSON at `data/workspace.json` (or `DDD_DATA_DIR`). Survives API restarts. |
-
----
-
-## AI capability — two named designers
-
-DDD Studio is a **design IDE**. AI proposes strategic and tactical models for the canvas; it does **not** generate application code.
-
-Both designers use the same contract:
-
-- **JSON Schema:** `lib/api-spec/schemas/ddd-domain-design.schema.json`
-- **Root shape:** `projectName` + **`boundedContexts` (list)** + optional `elements`, `relationships`, `glossary`
-
-| Designer | ID | When it runs | Role |
-|----------|-----|--------------|------|
-| **Gemini ADK Designer** | `gemini-adk` | Vertex AI + **Application Default Credentials** (`GOOGLE_CLOUD_PROJECT`, `gcloud auth application-default login` or SA) | Live model via **Google ADK 2.x** + Gemini structured JSON on Vertex |
-| **Studio Sketch Designer** | `mock` | No key, ADK missing, or forced offline | Deterministic multi-context sketch for demos, CI, and local exploration |
-
-Both paths are intentional and first-class: live design when you have Gemini; sketch design when you do not.
-
-### API
-
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /api/ai/designers` | List named designers |
-| `GET /api/ai/domain-design-schema` | Schema metadata |
-| `POST /api/ai/generate-domain` | Run a designer; optionally apply to the workspace |
-
-```http
-POST /api/ai/generate-domain
-Content-Type: application/json
-
-{
-  "prompt": "SaaS billing with subscriptions, invoices, and dunning",
-  "apply": true,
-  "mode": "merge"
-}
-```
-
-Response includes `source` (`gemini-adk` | `mock`), `designer: { id, name, description }`, and `design` JSON.
-
-### UI
-
-Domain map toolbar → **AI design** → **Preview JSON** or **Generate & apply to map**.
-
-### Auth (Vertex AI + Application Default Credentials)
-
-Design and codegen use **ADC**, not API keys:
+No API keys. Authenticate once and go:
 
 ```bash
 gcloud auth application-default login
-export GOOGLE_CLOUD_PROJECT=your-project-id
-export GOOGLE_CLOUD_LOCATION=us-central1   # optional, default us-central1
-# GOOGLE_GENAI_USE_VERTEXAI is set automatically to TRUE by the server
-
-# Production / CI: service account
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json
-
-# Optional offline force (sketch only)
-# export DDD_AI_OFFLINE=1
+# optional: gcloud auth application-default set-quota-project <project>   (or set GOOGLE_CLOUD_PROJECT)
+npm run dev
 ```
 
-`GET /api/ai/auth-status` reports whether ADC is ready.
+In a service context use `GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json` or workload identity.
 
+Two designers / generators share one contract, and the UI always tells you which one ran:
 
-### Implementation
+| | Live | Offline fallback |
+|---|---|---|
+| Design | **Gemini ADK Designer** (`gemini-adk`) | **Studio Sketch Designer** (`mock`) |
+| Code | **Gemini ADK Codegen** | **Studio Sketch Codegen** (TypeScript stubs only) |
 
-- Agent: `artifacts/api-server/src/ai/domain-designer-agent.ts`
-- Schema prompt: `artifacts/api-server/src/ai/domain-design-schema.ts`
-- Routes: `artifacts/api-server/src/routes/ai.ts`
-- Apply: `applyAiDomainDesign()` in `ddd.ts`
+- The sketch path is used only when credentials are not usable; the API returns `fallbackReason` and the UI shows a banner and a warning toast. **A failed live call is never silently replaced by the sketch** — you get the real error.
+- The design contract is one Zod schema (`server/src/ai/design-schema.ts`), used to constrain Gemini's output, to validate it, and served as JSON Schema at `GET /api/ai/domain-design-schema`. Invalid elements/relationships/terms are dropped and reported (`dropped`) rather than failing the whole design.
+- **AI design → preview → apply.** *Generate design* shows the proposal; *Apply to map* applies that exact proposal (no second model call). Applying merges into your workspace: existing contexts/elements with the same name are reused, and your project name is kept.
+- Strategic relationships (customer-supplier, anti-corruption, …) may name bounded contexts; they are attached to a representative element in each context.
+- **Codegen** consumes the versioned export (`GET /api/workspace/export`) and returns `files[]` (downloaded as a JSON bundle). Exports over 200k characters are refused with advice to narrow the scope, rather than truncated.
 
----
+## Modeling workflow
 
-## Event storming chains, sagas & CQRS (design)
+A new workspace is **blank**. The first screen lets you name the project, add the first bounded context, ask Gemini for a starting point, or (optionally) load the sample Commerce Platform.
 
-### Process links (event storming)
-| Type | Meaning |
-|------|---------|
-| `triggers` | Command (or policy) causes a domain event |
-| `reacts-to` | Policy / saga / handler listens to an event |
-| `publishes` / `subscribes` | Aggregate publish / subscriber listen |
-| `orchestrates` | **Orchestration saga**: central coordinator drives steps |
-| `choreographs` | **Choreography**: peers react via events only (no central boss) |
-| `projects-to` | Event updates a **CQRS read model** |
-| `handles` | Command/query handler executes a command or query |
+1. **Contexts** — *Add context* on the Domain map. The **Context map** tab shows only contexts and their strategic relationships (the only view with edge labels).
+2. **Domain designer** — add aggregates, roots, entities, value objects, repositories, services, resources by clicking or **dragging them from the palette onto the canvas**, then draw relationships by dragging (see below). Each bounded context is drawn as a boundary around its elements.
+3. **Event storming** — commands, events, policies, actors, sagas, handlers and read models live on their own board; select a sticky to highlight its publisher/listener chain.
+4. **Glossary** — ubiquitous language per context.
+5. **Validate** — marking an element `validated` runs model rules (an aggregate needs exactly one root and documented invariants, etc.); `GET /api/model/validate` reports everything. A rejected edit changes nothing.
+6. **Export / generate** — *Export JSON*, or *Generate code*.
 
-Select a sticky on the **Event storming** tab to highlight the publisher/listener chain (timeline layout).
+## The diagram canvas
 
-### Saga styles
-- **Orchestration** — one saga/process-manager issues commands and tracks state (`sagaStyle: orchestration`).
-- **Choreography** — local policies `reacts-to` events and issue the next command (`sagaStyle: choreography`).
+The canvas is built for diagrams that stay readable as they grow.
 
-### CQRS (design model)
-| Kind | CQRS side |
-|------|-----------|
-| `command`, `command-handler` | write |
-| `query-handler`, `read-model` | read |
-| `projects-to` edge | event → read model projection |
+| You want to | Do this |
+|---|---|
+| Move an element | Drag it. It snaps to a 16 px grid and can never land on another element; a drop that would collide (or make two contexts overlap) slides to the nearest free spot, and says so. Positions are saved automatically. |
+| Move a whole context | Drag the title strip of its boundary. |
+| Move an element to another context | Select it and change *Belongs to* in the inspector. It is re-placed beside its new context. (Dragging never lets two contexts overlap, so this is the way to move between them.) |
+| Connect two elements | Drag from the small dot that appears on an element and drop anywhere on another element. The relationship type is chosen from the two element kinds (aggregate → root is *composition*, root → event is *publishes*, command → event is *triggers*, …). Pick a type in the palette first to override it for the next connections. |
+| Change, label, reverse or delete a relationship | Click the line, then use the inspector (or press Delete). |
+| Link two contexts | On the **Context map**, drag from one context to another (defaults to *customer–supplier*). |
+| Add an element in place | Drag a kind from the palette onto the canvas. |
+| Clean everything up | **Tidy layout** re-arranges the whole board. |
+| Focus | Choosing a context or searching dims everything else instead of hiding it, so the layout never shifts. |
 
-Validation: exactly one `handles` edge per command; query handlers must not sit on the command side.
+How it keeps the picture clean:
 
----
+- **Orthogonal routing** — every relationship is a line of horizontal and vertical segments, the equivalent of PlantUML's `skinparam linetype ortho`, but aware of the elements: lines leave and enter an element square through a port, **route around any element in the way**, take as few bends as possible, give parallel relationships their own lanes, and avoid crossing where a reasonable detour exists. The router is a grid-based A* search (`client/src/diagram/router.ts`); moving one element only re-routes the lines attached to it.
+- **Automatic layout** — layered (Sugiyama-style) placement inside each bounded context, long chains folded into compact rows, contexts arranged as a landscape block, and always enough clearance between elements for lines to pass (`client/src/diagram/layout.ts`). New elements land beside their own context; a new AI-generated or imported context is placed as a block to the right of what is already there. Existing elements are never moved by that.
+- **Labels** only appear on the context map and event board, and are placed along their own line where they do not cover another label or an element.
 
-## Export JSON + Gemini codegen
+Model rules and relationship types (including CQRS `handles`/`projects-to` and saga `orchestrates`/`choreographs`) are described by the types in `server/src/domain/model.ts`.
 
-Design is the source of truth. Code is a **projection** of the export document.
+## Schema connections (reverse engineering)
 
-### Export
+Supports **PostgreSQL, MySQL, Oracle** out of the box and **IBM Db2** with an optional driver.
 
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /api/workspace/export` | Stable versioned JSON (`schemaVersion`, contexts, elements, relationships, glossary, processChains, cqrs, sagas) |
+1. *Add connection*, then *Introspect schema* — the server connects with a read-only session and reads tables, columns, primary keys and foreign keys.
+2. Tick the tables you want and *Import as draft elements* into a bounded context: each table becomes a `needs-review` entity, foreign keys become relationships. Re-importing reuses existing elements.
 
-UI: toolbar **Export JSON** downloads the file.
+Notes:
+- **Passwords are held in server memory only** for the session and are never written to `workspace.json` or logs. After a server restart you are asked for the password again.
+- Oracle uses the pure-JavaScript "thin" driver (no Instant Client); it reads the connecting user's own schema, and `Database` is the service name.
+- Db2 needs IBM's native driver, which is a heavier install: `npm install ibm_db -w server`. Without it, Db2 introspection reports how to enable it. (The Db2 queries are untested against a real Db2.)
+- The server connects to whatever host you enter. It is designed as a local/trusted developer tool — do not expose it to untrusted users.
 
-### Code generation
+## Data and persistence
 
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /api/ai/generate-code` | Consume export JSON → source files via ADK / sketch |
-| `GET /api/ai/code-generators` | List **Gemini ADK Codegen** and **Studio Sketch Codegen** |
+The workspace is stored at `server/data/workspace.json` (or `DDD_DATA_DIR`), written atomically. An unreadable file is moved aside as `workspace.json.corrupt-<time>` instead of being overwritten. *Settings → Start over* can clear the workspace or load the sample. Element positions are stored with the workspace; files saved by older versions (which used percentages) are re-laid-out automatically the first time they are opened.
 
-Body (optional fields):
+To start again from a blank workspace, use *Settings → Start over → Clear workspace*, or stop the server and delete `server/data/workspace.json`.
 
-```json
-{
-  "stack": "typescript-express",
-  "packageName": "my-domain",
-  "scope": "full",
-  "includeTests": false
-}
-```
+## API
 
-If `export` is omitted, the live workspace is exported automatically.
+All routes are under `/api`. Request bodies are validated with Zod; errors are `{ "error": "…" }` (model-rule failures also carry `issues`).
 
-| Generator | When |
-|-----------|------|
-| **Gemini ADK Codegen** | Vertex AI + **Application Default Credentials** |
-| **Studio Sketch Codegen** | Offline deterministic TypeScript stubs from the export |
+| Area | Endpoints |
+|---|---|
+| Health | `GET /healthz` |
+| Workspace | `GET/PATCH /workspace`, `PUT /workspace/layout` (save positions), `POST /workspace/reset`, `GET /workspace/export`, `GET /model/validate` |
+| Contexts | `GET/POST /bounded-contexts`, `PATCH/DELETE /bounded-contexts/:id` |
+| Elements | `GET/POST /domain-nodes`, `PATCH/DELETE /domain-nodes/:id`, `POST /domain-nodes/:id/validate-invariants` |
+| Relationships | `GET/POST /relationships`, `PATCH/DELETE /relationships/:id` (PATCH changes type or label, or reverses by swapping source and target) |
+| Glossary | `GET/POST /glossary`, `PATCH/DELETE /glossary/:id` |
+| Connections | `GET/POST /schema-connections`, `DELETE /schema-connections/:id`, `POST …/:id/introspect`, `GET …/:id/snapshot`, `POST …/:id/import` |
+| AI | `GET /ai/auth-status`, `GET /ai/designers`, `GET /ai/code-generators`, `GET /ai/domain-design-schema`, `POST /ai/generate-domain`, `POST /ai/apply-domain`, `POST /ai/generate-code` |
 
-UI: toolbar **Generate code** → choose stack/scope → download codegen JSON bundle (`files[]` with path + content).
+## Code map
 
-Flow: **Design → Export JSON → Generate code with Gemini**.
-
+- `server/src/domain/` — `model.ts` (single source of truth: Zod schemas + types), `store.ts` (state + persistence), `validation.ts`, `export.ts`, `apply-design.ts`, `import-schema.ts`, `seed.ts`
+- `server/src/routes/` — `model.routes.ts`, `connections.routes.ts`, `ai.routes.ts`, shared `http.ts`
+- `server/src/introspect/` — one small reader per engine plus the shared snapshot builder
+- `server/src/ai/` — ADC check, ADK runner, designer, code generator, design schema
+- `client/src/lib/api.ts` — typed API layer. Types are imported from the server's model (type-only), so client and server cannot drift.
+- `client/src/diagram/` — the diagram engine, free of React and the DOM: `router.ts` (orthogonal routing, label placement), `layout.ts` (layout and placement), `relations.ts` (UML notation and default relationship types)
+- `client/src/components/diagram-canvas.tsx`, `diagram-parts.tsx` — the interactive canvas (React Flow for pan/zoom/drag/connect) and its cards, boundaries and edges
+- `client/src/pages/`, `client/src/components/` — Domain map, Glossary, Connections, Settings, palette
+- `server/test/`, `client/test/` — `npm test` runs both. Server: the API end to end plus the Postgres introspection SQL against a real in-process Postgres (PGlite). Client: the router (including "an element in the way", lane separation, randomised property tests and a performance budget) and the layout engine.
