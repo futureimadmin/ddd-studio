@@ -1,1 +1,0 @@
-- [GitHub push flow](github-push.md) — empty GitHub repositories need a bootstrap commit before Git Data API uploads work.
