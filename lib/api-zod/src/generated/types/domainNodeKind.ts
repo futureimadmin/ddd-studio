@@ -22,4 +22,7 @@ export const DomainNodeKind = {
   repository: 'repository',
   service: 'service',
   resource: 'resource',
+  'anti-corruption-layer': 'anti-corruption-layer',
+  saga: 'saga',
+  'process-manager': 'process-manager',
 } as const;

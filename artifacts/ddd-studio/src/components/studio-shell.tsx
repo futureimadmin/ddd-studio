@@ -1,8 +1,9 @@
 import { Link, useLocation } from 'wouter';
-import { Activity, Boxes, ChevronRight, Database, GitBranch, Settings2, Sparkles } from 'lucide-react';
+import { Activity, BookOpen, Boxes, ChevronRight, Database, GitBranch, Settings2, Sparkles } from 'lucide-react';
 
 const navItems = [
   { href: '/', label: 'Domain map', icon: GitBranch, key: 'map' },
+  { href: '/glossary', label: 'Glossary', icon: BookOpen, key: 'glossary' },
   { href: '/connections', label: 'Schema connections', icon: Database, key: 'connections' },
   { href: '/settings', label: 'Workspace settings', icon: Settings2, key: 'settings' },
 ];

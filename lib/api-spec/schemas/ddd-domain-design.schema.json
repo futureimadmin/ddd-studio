@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ddd-studio.local/schemas/ddd-domain-design.schema.json",
+  "title": "DDDDomainDesign",
+  "description": "Strategic and tactical Domain-Driven Design model for a product domain. Used as Gemini structured output for the DDD Studio designer (not code generation).",
+  "type": "object",
+  "required": ["projectName", "boundedContexts"],
+  "additionalProperties": false,
+  "properties": {
+    "projectName": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short name for the workspace / product domain"
+    },
+    "summary": {
+      "type": "string",
+      "description": "One-paragraph design rationale"
+    },
+    "boundedContexts": {
+      "type": "array",
+      "minItems": 1,
+      "description": "List of bounded contexts (strategic design)",
+      "items": {
+        "type": "object",
+        "required": ["key", "name", "purpose", "color"],
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Stable slug used to link nodes (e.g. orders, inventory)"
+          },
+          "name": { "type": "string", "minLength": 1 },
+          "purpose": {
+            "type": "string",
+            "description": "Business capability this boundary owns"
+          },
+          "color": {
+            "type": "string",
+            "description": "Hex color for the context on the map, e.g. #e87554"
+          }
+        }
+      }
+    },
+    "elements": {
+      "type": "array",
+      "description": "Tactical and process elements inside contexts",
+      "items": {
+        "type": "object",
+        "required": ["key", "contextKey", "kind", "name"],
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Stable id within this design (e.g. order-aggregate)"
+          },
+          "contextKey": {
+            "type": "string",
+            "description": "Must match a boundedContexts[].key"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "aggregate",
+              "aggregate-root",
+              "entity",
+              "value-object",
+              "domain-event",
+              "command",
+              "policy",
+              "actor",
+              "read-model",
+              "repository",
+              "service",
+              "resource",
+              "anti-corruption-layer",
+              "saga",
+              "process-manager"
+            ]
+          },
+          "name": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "methods": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Behavioral signatures, e.g. place(), cancel()"
+          },
+          "invariants": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Business rules for aggregates, roots, sagas, ACLs"
+          },
+          "eventVersion": {
+            "type": "string",
+            "description": "Semver for domain-event contracts"
+          },
+          "eventPayloadSchema": {
+            "type": "string",
+            "description": "JSON Schema text or prose for domain-event payload"
+          },
+          "eventCompatibility": {
+            "type": "string",
+            "enum": ["backward", "forward", "full", "none"]
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "x": { "type": "number", "minimum": 5, "maximum": 95 },
+          "y": { "type": "number", "minimum": 5, "maximum": 95 }
+        }
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "description": "UML and strategic links between elements",
+      "items": {
+        "type": "object",
+        "required": ["sourceKey", "targetKey", "type"],
+        "additionalProperties": false,
+        "properties": {
+          "sourceKey": { "type": "string" },
+          "targetKey": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": [
+              "uses",
+              "aggregation",
+              "composition",
+              "generalization",
+              "specialization",
+              "publishes",
+              "subscribes",
+              "owns",
+              "invokes",
+              "exposed-by",
+              "shared-kernel",
+              "customer-supplier",
+              "conformist",
+              "anti-corruption",
+              "open-host-service",
+              "published-language",
+              "partnership",
+              "separate-ways"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "description": "Required for context-map style links (e.g. Customer-Supplier)"
+          }
+        }
+      }
+    },
+    "glossary": {
+      "type": "array",
+      "description": "Ubiquitous language terms",
+      "items": {
+        "type": "object",
+        "required": ["term", "definition"],
+        "additionalProperties": false,
+        "properties": {
+          "term": { "type": "string" },
+          "definition": { "type": "string" },
+          "contextKey": {
+            "type": ["string", "null"],
+            "description": "boundedContexts key or null for workspace-wide"
+          },
+          "aliases": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

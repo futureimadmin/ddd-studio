@@ -20,4 +20,12 @@ export const RelationshipInputType = {
   owns: 'owns',
   invokes: 'invokes',
   'exposed-by': 'exposed-by',
+  'shared-kernel': 'shared-kernel',
+  'customer-supplier': 'customer-supplier',
+  conformist: 'conformist',
+  'anti-corruption': 'anti-corruption',
+  'open-host-service': 'open-host-service',
+  'published-language': 'published-language',
+  partnership: 'partnership',
+  'separate-ways': 'separate-ways',
 } as const;

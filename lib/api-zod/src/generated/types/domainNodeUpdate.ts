@@ -19,4 +19,11 @@ export interface DomainNodeUpdate {
   y?: number;
   tags?: string[];
   methods?: string[];
+  /** Aggregate business rules (natural language or code-like asserts) */
+  invariants?: string[];
+  /** Semver for domain-event contracts */
+  eventVersion?: string;
+  /** JSON Schema or prose describing event payload */
+  eventPayloadSchema?: string;
+  eventCompatibility?: 'backward' | 'forward' | 'full' | 'none';
 }

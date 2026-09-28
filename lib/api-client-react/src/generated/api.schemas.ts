@@ -48,6 +48,9 @@ export const DomainNodeKind = {
   repository: 'repository',
   service: 'service',
   resource: 'resource',
+  'anti-corruption-layer': 'anti-corruption-layer',
+  saga: 'saga',
+  'process-manager': 'process-manager',
 } as const;
 
 export type DomainNodeStatus = typeof DomainNodeStatus[keyof typeof DomainNodeStatus];
@@ -88,6 +91,9 @@ export const DomainNodeInputKind = {
   repository: 'repository',
   service: 'service',
   resource: 'resource',
+  'anti-corruption-layer': 'anti-corruption-layer',
+  saga: 'saga',
+  'process-manager': 'process-manager',
 } as const;
 
 export type DomainNodeInputStatus = typeof DomainNodeInputStatus[keyof typeof DomainNodeInputStatus];
@@ -128,6 +134,9 @@ export const DomainNodeUpdateKind = {
   repository: 'repository',
   service: 'service',
   resource: 'resource',
+  'anti-corruption-layer': 'anti-corruption-layer',
+  saga: 'saga',
+  'process-manager': 'process-manager',
 } as const;
 
 export type DomainNodeUpdateStatus = typeof DomainNodeUpdateStatus[keyof typeof DomainNodeUpdateStatus];
@@ -166,6 +175,14 @@ export const RelationshipType = {
   owns: 'owns',
   invokes: 'invokes',
   'exposed-by': 'exposed-by',
+  'shared-kernel': 'shared-kernel',
+  'customer-supplier': 'customer-supplier',
+  conformist: 'conformist',
+  'anti-corruption': 'anti-corruption',
+  'open-host-service': 'open-host-service',
+  'published-language': 'published-language',
+  partnership: 'partnership',
+  'separate-ways': 'separate-ways',
 } as const;
 
 export interface Relationship {
@@ -191,6 +208,14 @@ export const RelationshipInputType = {
   owns: 'owns',
   invokes: 'invokes',
   'exposed-by': 'exposed-by',
+  'shared-kernel': 'shared-kernel',
+  'customer-supplier': 'customer-supplier',
+  conformist: 'conformist',
+  'anti-corruption': 'anti-corruption',
+  'open-host-service': 'open-host-service',
+  'published-language': 'published-language',
+  partnership: 'partnership',
+  'separate-ways': 'separate-ways',
 } as const;
 
 export interface RelationshipInput {
