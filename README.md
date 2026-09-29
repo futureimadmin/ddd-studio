@@ -103,6 +103,24 @@ How it keeps the picture clean:
 
 Model rules and relationship types (including CQRS `handles`/`projects-to` and saga `orchestrates`/`choreographs`) are described by the types in `server/src/domain/model.ts`.
 
+### UML notation used on the palette and the canvas
+
+| Relationship | Line | Arrowhead |
+|---|---|---|
+| Composition / Owns | solid | filled diamond at the source, open arrow at the target |
+| Aggregation | solid | hollow diamond at the source, open arrow at the target |
+| Generalization | solid | hollow triangle ("is-a") |
+| Specialization / Realization | dashed | hollow triangle ("implements") |
+| Uses, Subscribes | dashed | open arrow |
+| Publishes, Invokes, Exposed by, and the process types | solid | filled arrow |
+| Customer-Supplier, Conformist, Anti-corruption, Open Host Service, Published Language | fine dashed | filled arrow, plus a short acronym (SK, C→S, CF, ACL, OHS, PL, P, SW) since these context-mapping patterns look alike on the wire and are told apart by name |
+
+**Generalization sets (AND / OR / XOR).** When two or more Generalization/Specialization arrows share one superclass, that superclass can carry a constraint saying whether an instance may be more than one subtype at once: **AND** (overlapping), **OR** (at least one applies) or **XOR** (exactly one, disjoint). This is a property of the *superclass element*, not a connection between two elements, so it is set from that element's inspector (the field appears once it has two or more incoming Generalization/Specialization arrows) and shown as a small badge on its card. The palette's "Generalization set" section explains the three symbols; it isn't a draggable connection type.
+
+### Logical vs Physical entities
+
+An Entity is **Logical** by default (a concept in the model, nothing more). Marking it **Physical**, from its inspector, lets you pick one specific table discovered by a [schema connection](#schema-connections-reverse-engineering) — the Entity then carries a small database badge naming that `schema.table`. Removing or renaming the underlying connection has no special handling beyond the safety net below; deleting the connection resets any Entity that pointed at one of its tables back to Logical rather than leaving a dangling reference.
+
 ## Schema connections (reverse engineering)
 
 Supports **PostgreSQL, MySQL, Oracle** out of the box and **IBM Db2** with an optional driver.

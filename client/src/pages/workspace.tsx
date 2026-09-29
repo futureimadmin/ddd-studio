@@ -41,19 +41,22 @@ import {
   useListBoundedContexts,
   useListDomainNodes,
   useListRelationships,
+  useListSchemaConnections,
   useUpdateBoundedContext,
   useUpdateDomainNode,
+  getConnectionSnapshot,
   type AiAuthStatus,
   type Context,
   type DomainNode,
   type GenerateDomainResult,
   type Relationship,
+  type SchemaSnapshot,
   type WorkspaceSnapshot,
 } from '@/lib/api';
 import { usePreferences } from '@/lib/preferences';
 import { notify, notifyError } from '@/lib/toast';
 import { DiagramCanvas, type DiagramEdge, type DiagramItem, type Move } from '@/components/diagram-canvas';
-import { inferRelation } from '@/diagram/relations';
+import { GENERALIZATION_CONSTRAINTS, inferRelation, isStrategicType, isStructuralType } from '@/diagram/relations';
 import { EVENT_KINDS, EventSticky, SymbolPalette } from '@/components/symbol-palette';
 
 const nodeKinds = [
@@ -356,6 +359,8 @@ export default function WorkspacePage() {
       color: colorOf.get(n.contextId) ?? '#e7a94b',
       x: n.x,
       y: n.y,
+      physicalTable: n.physicalTable ? `${n.physicalTable.schema}.${n.physicalTable.table}` : null,
+      generalizationConstraint: n.generalizationConstraint,
     }),
     [colorOf],
   );
@@ -380,7 +385,13 @@ export default function WorkspacePage() {
     [contexts, nodes],
   );
   const designerEdges = useMemo<DiagramEdge[]>(
-    () => domainRelationships.map((r) => ({ id: r.id, source: r.sourceId, target: r.targetId, type: r.type, label: r.label })),
+    () =>
+      // Strategic (context-mapping) relationships describe two *bounded contexts* as wholes; drawing
+      // them between whichever tactical elements happen to stand in for those contexts would be
+      // misleading here. They belong on, and only appear on, the Context Map.
+      domainRelationships
+        .filter((r) => !isStrategicType(r.type))
+        .map((r) => ({ id: r.id, source: r.sourceId, target: r.targetId, type: r.type, label: r.label })),
     [domainRelationships],
   );
   const stormEdges = useMemo<DiagramEdge[]>(() => {
@@ -667,8 +678,7 @@ export default function WorkspacePage() {
     if (id) setSelectedId(null);
   };
 
-  const contextMapTypes = ['shared-kernel', 'customer-supplier', 'conformist', 'anti-corruption', 'open-host-service', 'published-language', 'partnership', 'separate-ways'];
-  /** The element that stands for a context when two contexts are linked. */
+  /** The element that stands for a context when two contexts are linked (the relationship still needs a concrete source/target). */
   const representativeOf = (contextId: string) =>
     domainNodes.find((n) => n.contextId === contextId && n.kind === 'aggregate-root') ??
     domainNodes.find((n) => n.contextId === contextId && n.kind === 'aggregate') ??
@@ -680,6 +690,7 @@ export default function WorkspacePage() {
     let from: string;
     let to: string;
     let label: string;
+    let crossesContexts = false;
 
     if (viewTab === 'context-map') {
       const a = representativeOf(sourceId);
@@ -688,7 +699,7 @@ export default function WorkspacePage() {
         notify('Add at least one element to each context before linking them.', 'warning');
         return;
       }
-      type = type && contextMapTypes.includes(type) ? type : 'customer-supplier';
+      type = type && isStrategicType(type) ? type : 'customer-supplier';
       from = a.id;
       to = b.id;
       label = `${contexts.find((c) => c.id === sourceId)?.name ?? ''} → ${contexts.find((c) => c.id === targetId)?.name ?? ''}`;
@@ -698,11 +709,15 @@ export default function WorkspacePage() {
       if (!source || !target) return;
       from = source.id;
       to = target.id;
+      // Bounded-Context relationships (Customer-Supplier, Anti-corruption, …) connect two *contexts*,
+      // never two elements — they can only be armed from the Context Map palette, but guard anyway.
+      if (type && isStrategicType(type)) type = null;
       if (!type) {
         const guess = inferRelation(source.kind, target.kind);
         type = guess.type;
         if (guess.swap) [from, to] = [to, from];
       }
+      crossesContexts = source.contextId !== target.contextId;
       label = `${nodes.find((n) => n.id === from)?.name} → ${nodes.find((n) => n.id === to)?.name}`;
     }
 
@@ -713,7 +728,16 @@ export default function WorkspacePage() {
           invalidateMap();
           setSelectedId(null);
           setSelectedEdgeId(viewTab === 'context-map' ? `ctx:${rel.id}` : rel.id);
-          notify(`${label}: ${type}. Select the line to change it.`);
+          if (viewTab === 'context-map') {
+            notify(`${label}: ${type} — shown on the Context Map only. Select the line to change it.`);
+          } else if (crossesContexts && isStructuralType(type)) {
+            notify(
+              `${label}: ${type} crosses a bounded context. In DDD, an aggregate normally only owns elements within its own context — consider a context-map relationship (customer-supplier, anti-corruption, …) instead.`,
+              'warning',
+            );
+          } else {
+            notify(`${label}: ${type}. Select the line to change it.`);
+          }
         },
       },
     );
@@ -1013,7 +1037,8 @@ export default function WorkspacePage() {
       {activeRelationType && (
         <div className="mb-3 flex items-center justify-between gap-3 border border-primary/40 bg-primary/5 px-3 py-2 text-xs" data-testid="connect-mode-banner">
           <span>
-            New connections will be drawn as <strong>{activeRelationType}</strong>. Drag from the dot on an element to another element.
+            New connections will be drawn as <strong>{activeRelationType}</strong>. Drag from the dot on{' '}
+            {viewTab === 'context-map' ? 'one Bounded Context to another' : 'an element to another element'}.
           </span>
           <button type="button" onClick={() => setActiveRelationType(null)} className="font-medium text-primary hover:underline">
             Back to Auto
@@ -1053,14 +1078,12 @@ export default function WorkspacePage() {
           </div>
 
           <div className="flex">
-            {(viewTab === 'designer' || viewTab === 'event-storming') && (
-              <SymbolPalette
-                mode={viewTab === 'event-storming' ? 'event-storming' : 'designer'}
-                onPickKind={onPickKind}
-                onPickRelation={onPickRelation}
-                activeRelationType={activeRelationType}
-              />
-            )}
+            <SymbolPalette
+              mode={viewTab}
+              onPickKind={onPickKind}
+              onPickRelation={onPickRelation}
+              activeRelationType={activeRelationType}
+            />
 
             <div className="relative h-[70dvh] min-h-[560px] min-w-0 flex-1">
               {isBlank && (
@@ -1763,6 +1786,9 @@ function NodeInspector({
     eventVersion?: string;
     eventPayloadSchema?: string;
     eventCompatibility?: string;
+    representation?: 'logical' | 'physical';
+    physicalTable?: { connectionId: string; schema: string; table: string } | null;
+    generalizationConstraint?: (typeof GENERALIZATION_CONSTRAINTS)[number] | 'none';
   };
   contexts: Array<{ id: string; name: string }>;
   nodes: Array<{ id: string; name: string }>;
@@ -1784,6 +1810,9 @@ function NodeInspector({
     eventCompatibility: 'backward' | 'forward' | 'full' | 'none';
     sagaStyle?: 'orchestration' | 'choreography' | 'none';
     cqrsSide?: 'command' | 'query' | 'both' | 'none';
+    representation?: 'logical' | 'physical';
+    physicalTable?: { connectionId: string; schema: string; table: string } | null;
+    generalizationConstraint?: (typeof GENERALIZATION_CONSTRAINTS)[number] | 'none';
   }) => void;
   onDelete: () => void;
   onDeleteRelationship: (id: string) => void;
@@ -1800,6 +1829,10 @@ function NodeInspector({
   const [eventCompatibility, setEventCompatibility] = useState(node.eventCompatibility ?? 'backward');
   const [sagaStyle, setSagaStyle] = useState((node as { sagaStyle?: string }).sagaStyle ?? 'none');
   const [cqrsSide, setCqrsSide] = useState((node as { cqrsSide?: string }).cqrsSide ?? 'none');
+  const [representation, setRepresentation] = useState(node.representation ?? 'logical');
+  const [physicalConnectionId, setPhysicalConnectionId] = useState(node.physicalTable?.connectionId ?? '');
+  const [physicalTableKey, setPhysicalTableKey] = useState(node.physicalTable ? `${node.physicalTable.schema}.${node.physicalTable.table}` : '');
+  const [generalizationConstraint, setGeneralizationConstraint] = useState(node.generalizationConstraint ?? 'none');
   useEffect(() => {
     setName(node.name);
     setContextId(node.contextId);
@@ -1813,9 +1846,36 @@ function NodeInspector({
     setEventCompatibility(node.eventCompatibility ?? 'backward');
     setSagaStyle((node as { sagaStyle?: string }).sagaStyle ?? 'none');
     setCqrsSide((node as { cqrsSide?: string }).cqrsSide ?? 'none');
+    setRepresentation(node.representation ?? 'logical');
+    setPhysicalConnectionId(node.physicalTable?.connectionId ?? '');
+    setPhysicalTableKey(node.physicalTable ? `${node.physicalTable.schema}.${node.physicalTable.table}` : '');
+    setGeneralizationConstraint(node.generalizationConstraint ?? 'none');
   }, [node]);
   const context = contexts.find((item) => item.id === node.contextId);
   const related = relationships.filter((item) => item.sourceId === node.id || item.targetId === node.id);
+  const incomingGeneralizations = relationships.filter((r) => r.targetId === node.id && (r.type === 'generalization' || r.type === 'specialization'));
+
+  const connectionsQuery = useListSchemaConnections();
+  const connections = connectionsQuery.data ?? [];
+  const [snapshot, setSnapshot] = useState<SchemaSnapshot | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
+  useEffect(() => {
+    if (representation !== 'physical' || !physicalConnectionId) {
+      setSnapshot(null);
+      return;
+    }
+    let cancelled = false;
+    setSnapshotLoading(true);
+    getConnectionSnapshot(physicalConnectionId)
+      .then((result) => !cancelled && setSnapshot(result))
+      .catch(() => !cancelled && setSnapshot(null))
+      .finally(() => !cancelled && setSnapshotLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [representation, physicalConnectionId]);
+  const tableOptions = snapshot?.tables.map((t) => `${t.schema}.${t.name}`) ?? [];
+  const selectedTable = snapshot?.tables.find((t) => `${t.schema}.${t.name}` === physicalTableKey);
   return (
     <div className="p-5" data-testid={`inspector-node-${node.id}`}>
       <div className="flex items-start justify-between">
@@ -1911,6 +1971,97 @@ function NodeInspector({
           </select>
         </label>
         <Field label="Tags" value={tags} onChange={setTags} placeholder="invariant, core" testId="input-inspector-tags" />
+
+        {node.kind === 'entity' && (
+          <div className="border border-border bg-background/60 p-3">
+            <span className="mb-2 block font-mono-ui text-[10px] uppercase tracking-[.14em] text-muted-foreground">Representation</span>
+            <div className="flex gap-1.5">
+              {(['logical', 'physical'] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setRepresentation(r)}
+                  data-testid={`button-representation-${r}`}
+                  className={`flex-1 border px-2 py-1.5 text-xs font-medium capitalize ${
+                    representation === r ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/40'
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+            {representation === 'physical' && (
+              <div className="mt-3 space-y-2">
+                <label className="block">
+                  <span className="mb-1 block font-mono-ui text-[9px] uppercase tracking-[.12em] text-muted-foreground">Connection</span>
+                  <select
+                    value={physicalConnectionId}
+                    onChange={(e) => {
+                      setPhysicalConnectionId(e.target.value);
+                      setPhysicalTableKey('');
+                    }}
+                    data-testid="select-physical-connection"
+                    className="h-9 w-full border border-input bg-background px-2 text-xs outline-none focus:border-primary"
+                  >
+                    <option value="">Choose a connection…</option>
+                    {connections.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {physicalConnectionId && (
+                  <label className="block">
+                    <span className="mb-1 block font-mono-ui text-[9px] uppercase tracking-[.12em] text-muted-foreground">Table</span>
+                    {snapshotLoading ? (
+                      <div className="text-[11px] text-muted-foreground">Loading tables…</div>
+                    ) : tableOptions.length ? (
+                      <select
+                        value={physicalTableKey}
+                        onChange={(e) => setPhysicalTableKey(e.target.value)}
+                        data-testid="select-physical-table"
+                        className="h-9 w-full border border-input bg-background px-2 text-xs outline-none focus:border-primary"
+                      >
+                        <option value="">Choose a table…</option>
+                        {tableOptions.map((key) => (
+                          <option key={key} value={key}>
+                            {key}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="text-[11px] leading-relaxed text-muted-foreground">
+                        No discovered tables for this session. Introspect this connection on the <span className="font-medium text-foreground">Schema connections</span> page first.
+                      </p>
+                    )}
+                  </label>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {incomingGeneralizations.length >= 2 && (
+          <label className="block">
+            <span className="mb-1.5 block font-mono-ui text-[10px] uppercase tracking-[.14em] text-muted-foreground">
+              Generalization set ({incomingGeneralizations.length} subtypes)
+            </span>
+            <select
+              value={generalizationConstraint}
+              onChange={(e) => setGeneralizationConstraint(e.target.value as typeof generalizationConstraint)}
+              data-testid="select-generalization-constraint"
+              className="h-10 w-full border border-input bg-background px-3 text-sm outline-none focus:border-primary"
+            >
+              <option value="none">None</option>
+              {GENERALIZATION_CONSTRAINTS.map((c) => (
+                <option key={c} value={c}>
+                  {c.toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
       <div className="mt-5 border-t border-border pt-4">
         <label className="block">
@@ -2013,6 +2164,18 @@ function NodeInspector({
             eventCompatibility: eventCompatibility as 'backward' | 'forward' | 'full' | 'none',
             sagaStyle: sagaStyle as 'orchestration' | 'choreography' | 'none',
             cqrsSide: cqrsSide as 'command' | 'query' | 'both' | 'none',
+            ...(node.kind === 'entity'
+              ? {
+                  representation,
+                  // Only sent when a table is actually resolved (picked, with its snapshot loaded); otherwise
+                  // omitted so a save that doesn't touch this field can't wipe an existing table reference
+                  // just because this session hasn't (re-)loaded that connection's last discovery.
+                  ...(representation === 'physical' && physicalConnectionId && selectedTable
+                    ? { physicalTable: { connectionId: physicalConnectionId, schema: selectedTable.schema, table: selectedTable.name } }
+                    : {}),
+                }
+              : {}),
+            ...(incomingGeneralizations.length >= 2 ? { generalizationConstraint } : {}),
           })
         }
         disabled={!name.trim()}
@@ -2095,9 +2258,15 @@ function EdgeInspector({
             {relationshipTypes.map((t) => (
               <option key={t} value={t}>
                 {t}
+                {isStrategicType(t) ? ' (context map)' : ''}
               </option>
             ))}
           </select>
+          {isStrategicType(relationship.type) && (
+            <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground" data-testid="text-edge-strategic-hint">
+              Context-mapping type: describes two bounded contexts, not these two elements specifically. It only appears on the Context Map, not here.
+            </p>
+          )}
         </label>
         <Field
           label="Label"

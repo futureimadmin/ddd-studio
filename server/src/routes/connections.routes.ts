@@ -48,6 +48,14 @@ export function connectionRoutes(store: Store): IRouter {
     state.connections = state.connections.filter((c) => c.id !== connection.id);
     store.passwords.delete(connection.id);
     store.snapshots.delete(connection.id);
+    // A Physical entity that pointed at a table on this connection goes back to Logical rather than
+    // keeping a dangling reference.
+    for (const node of state.nodes) {
+      if (node.physicalTable?.connectionId === connection.id) {
+        node.representation = "logical";
+        node.physicalTable = null;
+      }
+    }
     store.save();
     res.status(204).send();
   });

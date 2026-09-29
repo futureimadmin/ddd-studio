@@ -154,6 +154,8 @@ export function modelRoutes(store: Store): IRouter {
 
     // Validate the *result* before touching anything: a rejected edit must leave no trace.
     const candidate = { ...node, ...patch };
+    // Going back to Logical (without also supplying a new table) drops the old physical-table reference.
+    if (patch.representation === "logical" && patch.physicalTable === undefined) candidate.physicalTable = null;
     if (candidate.status === "validated") {
       const issues = validateModel(
         { nodes: state.nodes.map((n) => (n.id === node.id ? candidate : n)), relationships: state.relationships },

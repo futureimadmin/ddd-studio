@@ -144,6 +144,81 @@ test("layout: batch-save positions for elements and contexts, ignoring unknown i
   assert.deepEqual([moved.body.x, moved.body.y], [16, 32]);
 });
 
+test("entities: Logical by default, can be marked Physical with a table, and reset by going back to Logical", async () => {
+  const created = await s.call("POST", "/api/domain-nodes", { contextId: ctxId, kind: "entity", name: "Customer" });
+  assert.equal(created.body.representation, "logical");
+  assert.equal(created.body.physicalTable, null);
+  assert.equal(created.body.generalizationConstraint, "none");
+
+  const conn = await s.call("POST", "/api/schema-connections", {
+    name: "warehouse", engine: "postgres", host: "h", database: "d", username: "u", password: "p",
+  });
+
+  const physical = await s.call("PATCH", `/api/domain-nodes/${created.body.id}`, {
+    representation: "physical",
+    physicalTable: { connectionId: conn.body.id, schema: "public", table: "customers" },
+  });
+  assert.equal(physical.status, 200);
+  assert.deepEqual(physical.body.physicalTable, { connectionId: conn.body.id, schema: "public", table: "customers" });
+
+  assert.equal(
+    (await s.call("PATCH", `/api/domain-nodes/${created.body.id}`, { physicalTable: { connectionId: "x", schema: "", table: "t" } })).status,
+    400,
+    "an empty schema/table is rejected",
+  );
+
+  const backToLogical = await s.call("PATCH", `/api/domain-nodes/${created.body.id}`, { representation: "logical" });
+  assert.equal(backToLogical.body.representation, "logical");
+  assert.equal(backToLogical.body.physicalTable, null, "the stale table reference is dropped, not left dangling");
+});
+
+test("deleting a schema connection resets any entity that pointed at one of its tables back to Logical", async () => {
+  const conn = await s.call("POST", "/api/schema-connections", {
+    name: "temp-db", engine: "mysql", host: "h", database: "d", username: "u", password: "p",
+  });
+  const entity = await s.call("POST", "/api/domain-nodes", {
+    contextId: ctxId, kind: "entity", name: "Invoice",
+    representation: "physical", physicalTable: { connectionId: conn.body.id, schema: "dbo", table: "invoices" },
+  });
+  assert.equal(entity.body.representation, "physical");
+
+  assert.equal((await s.call("DELETE", `/api/schema-connections/${conn.body.id}`)).status, 204);
+
+  const after = (await s.call("GET", "/api/domain-nodes")).body.find((n: { id: string }) => n.id === entity.body.id);
+  assert.equal(after.representation, "logical");
+  assert.equal(after.physicalTable, null);
+});
+
+test("model validation flags a Physical element with no table, and a Physical non-Entity, as warnings only", async () => {
+  const noTable = await s.call("POST", "/api/domain-nodes", { contextId: ctxId, kind: "entity", name: "NoTable", representation: "physical" });
+  assert.equal(noTable.status, 201, "a warning-level issue never blocks a draft create");
+  const onAggregate = await s.call("POST", "/api/domain-nodes", { contextId: ctxId, kind: "aggregate", name: "PhysicalAgg", representation: "physical" });
+
+  const validation = await s.call("GET", "/api/model/validate");
+  const codes = (id: string) => validation.body.issues.filter((i: { nodeId: string }) => i.nodeId === id).map((i: { code: string }) => i.code);
+  assert.ok(codes(noTable.body.id).includes("PHYSICAL_WITHOUT_TABLE"));
+  assert.ok(codes(onAggregate.body.id).includes("PHYSICAL_ON_NON_ENTITY"));
+  assert.ok(validation.body.issues.every((i: { severity: string; nodeId?: string }) => i.severity !== "error" || i.nodeId !== noTable.body.id));
+});
+
+test("generalization-set constraint: round-trips, and warns when set without at least two subtypes", async () => {
+  const base = await s.call("POST", "/api/domain-nodes", { contextId: ctxId, kind: "entity", name: "Payment" });
+  const set = await s.call("PATCH", `/api/domain-nodes/${base.body.id}`, { generalizationConstraint: "xor" });
+  assert.equal(set.body.generalizationConstraint, "xor");
+  assert.equal((await s.call("PATCH", `/api/domain-nodes/${base.body.id}`, { generalizationConstraint: "not-a-type" })).status, 400);
+
+  let validation = await s.call("GET", "/api/model/validate");
+  assert.ok(validation.body.issues.some((i: { nodeId: string; code: string }) => i.nodeId === base.body.id && i.code === "GENERALIZATION_CONSTRAINT_UNUSED"));
+
+  const cardPayment = await s.call("POST", "/api/domain-nodes", { contextId: ctxId, kind: "entity", name: "CardPayment" });
+  const cashPayment = await s.call("POST", "/api/domain-nodes", { contextId: ctxId, kind: "entity", name: "CashPayment" });
+  await s.call("POST", "/api/relationships", { sourceId: cardPayment.body.id, targetId: base.body.id, type: "generalization" });
+  await s.call("POST", "/api/relationships", { sourceId: cashPayment.body.id, targetId: base.body.id, type: "specialization" });
+
+  validation = await s.call("GET", "/api/model/validate");
+  assert.ok(!validation.body.issues.some((i: { nodeId: string; code: string }) => i.nodeId === base.body.id && i.code === "GENERALIZATION_CONSTRAINT_UNUSED"));
+});
+
 test("glossary CRUD with validation", async () => {
   assert.equal((await s.call("POST", "/api/glossary", { term: "" })).status, 400);
   assert.equal((await s.call("POST", "/api/glossary", { term: "T", contextId: "ghost" })).status, 400);

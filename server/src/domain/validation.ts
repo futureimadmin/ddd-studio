@@ -9,6 +9,8 @@ export function validateModel(model: ModelView, focusNodeId?: string): Validatio
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const compositionTargets = new Map<string, string[]>();
   const handlersByCommand = new Map<string, number>();
+  /** How many generalization/specialization arrows point *at* this node (it as the shared superclass). */
+  const subtypeCountByTarget = new Map<string, number>();
 
   for (const rel of relationships) {
     if (rel.type === "composition" || rel.type === "owns") {
@@ -17,6 +19,9 @@ export function validateModel(model: ModelView, focusNodeId?: string): Validatio
       compositionTargets.set(rel.sourceId, list);
     }
     if (rel.type === "handles") handlersByCommand.set(rel.targetId, (handlersByCommand.get(rel.targetId) ?? 0) + 1);
+    if (rel.type === "generalization" || rel.type === "specialization") {
+      subtypeCountByTarget.set(rel.targetId, (subtypeCountByTarget.get(rel.targetId) ?? 0) + 1);
+    }
   }
 
   const candidates = focusNodeId ? nodes.filter((n) => n.id === focusNodeId) : nodes;
@@ -78,6 +83,19 @@ export function validateModel(model: ModelView, focusNodeId?: string): Validatio
 
     if (node.kind === "query-handler" && node.cqrsSide === "command") {
       add("QUERY_HANDLER_ON_COMMAND_SIDE", "error", `Query handler "${node.name}" must not sit on the command side`);
+    }
+
+    if (node.representation === "physical") {
+      if (node.kind !== "entity") add("PHYSICAL_ON_NON_ENTITY", "warning", `"${node.name}" (${node.kind}) is marked Physical; usually only Entities map to a table`);
+      if (!node.physicalTable) add("PHYSICAL_WITHOUT_TABLE", "warning", `"${node.name}" is marked Physical but no database table is selected`);
+    }
+
+    if (node.generalizationConstraint !== "none" && (subtypeCountByTarget.get(node.id) ?? 0) < 2) {
+      add(
+        "GENERALIZATION_CONSTRAINT_UNUSED",
+        "warning",
+        `"${node.name}" has a ${node.generalizationConstraint.toUpperCase()} generalization-set constraint but fewer than two subtypes point to it`,
+      );
     }
   }
 

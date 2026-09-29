@@ -36,6 +36,7 @@ import {
   type BoardMode,
   type Position,
 } from '@/diagram/layout';
+import type { GeneralizationConstraint } from '@/diagram/relations';
 import { GRID, placeLabels, routeEdges, type Rect, type Route } from '@/diagram/router';
 import { notify } from '@/lib/toast';
 import { ConnectionLine, MarkerDefs, edgeTypes, nodeTypes } from './diagram-parts';
@@ -54,6 +55,9 @@ export type DiagramItem = {
   /** Context map only. */
   purpose?: string;
   elements?: number;
+  /** "schema.table" when this Entity is Physical; null otherwise. Designer/Event storming only. */
+  physicalTable?: string | null;
+  generalizationConstraint?: GeneralizationConstraint;
 };
 export type DiagramEdge = { id: string; source: string; target: string; type: string; label: string };
 export type DiagramContext = { id: string; name: string; color: string };
@@ -251,7 +255,17 @@ function Canvas(props: DiagramProps) {
         data:
           mode === 'contexts'
             ? { name: it.name, purpose: it.purpose ?? '', color: it.color, elements: it.elements ?? 0, dimmed }
-            : { name: it.name, kind: it.kind, description: it.description, status: it.status, methods: it.methods, color: it.color, dimmed },
+            : {
+                name: it.name,
+                kind: it.kind,
+                description: it.description,
+                status: it.status,
+                methods: it.methods,
+                color: it.color,
+                dimmed,
+                physicalTable: it.physicalTable ?? null,
+                generalizationConstraint: it.generalizationConstraint ?? 'none',
+              },
       });
     });
     return out;
@@ -411,6 +425,14 @@ function Canvas(props: DiagramProps) {
   };
 
   const dropKind = (event: DragEvent) => {
+    // A relationship type is already armed the moment it's picked up (see the palette) — a
+    // relationship needs two endpoints, so there is nothing more to do with wherever it lands.
+    // preventDefault() here just keeps the cursor showing "allowed" instead of "no drop" while
+    // dragging over the canvas, so the gesture doesn't look broken.
+    if (event.dataTransfer.types.includes('application/x-ddd-relation')) {
+      event.preventDefault();
+      return;
+    }
     const kind = event.dataTransfer.getData('application/x-ddd-kind');
     if (!kind || !onDropKind) return;
     event.preventDefault();
@@ -459,7 +481,10 @@ function Canvas(props: DiagramProps) {
       tabIndex={0}
       onKeyDown={onKeyDown}
       onDragOver={(e) => {
-        if (onDropKind && e.dataTransfer.types.includes('application/x-ddd-kind')) {
+        if (e.dataTransfer.types.includes('application/x-ddd-relation')) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        } else if (onDropKind && e.dataTransfer.types.includes('application/x-ddd-kind')) {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'copy';
         }
@@ -475,6 +500,8 @@ function Canvas(props: DiagramProps) {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
+        // Edges are fully controlled from `rfEdges`; this just satisfies React Flow's controlled-component contract.
+        onEdgesChange={() => {}}
         onNodeClick={(event, node) => {
           if (node.id.startsWith(BOUNDARY_PREFIX) || event.shiftKey || event.ctrlKey || event.metaKey) return;
           onSelectItem(node.id);
@@ -496,6 +523,7 @@ function Canvas(props: DiagramProps) {
         selectNodesOnDrag={false}
         zoomOnDoubleClick={false}
         deleteKeyCode={null}
+        onError={(code, message) => console.error('[RF ERROR]', code, message)}
         minZoom={0.15}
         maxZoom={1.75}
 

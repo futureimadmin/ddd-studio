@@ -75,6 +75,16 @@ export const SAGA_STYLES = ["orchestration", "choreography", "none"] as const;
 export const CQRS_SIDES = ["command", "query", "both", "none"] as const;
 export const DB_ENGINES = ["oracle", "db2", "mysql", "postgres"] as const;
 
+/**
+ * UML generalization-set constraint. Meaningful on a *superclass* element that has two or more
+ * incoming generalization/specialization relationships — it says whether an instance can belong
+ * to more than one of the subtypes at once (overlapping), to at most one (disjoint), or is left
+ * unconstrained. "none" means the element isn't a generalization-set root (the common case).
+ */
+export const GENERALIZATION_CONSTRAINTS = ["none", "and", "or", "xor"] as const;
+/** Whether an Entity stands for a concept only (Logical) or a specific physical database table (Physical). */
+export const NODE_REPRESENTATIONS = ["logical", "physical"] as const;
+
 export const NodeKindSchema = z.enum(NODE_KINDS);
 export const RelationTypeSchema = z.enum(RELATION_TYPES);
 export const NodeStatusSchema = z.enum(NODE_STATUSES);
@@ -129,6 +139,14 @@ const nodeShape = {
   sagaStyle: z.enum(SAGA_STYLES),
   /** CQRS side for handlers / models */
   cqrsSide: z.enum(CQRS_SIDES),
+  /** Generalization-set constraint, when this element is the shared superclass of two or more subtypes. */
+  generalizationConstraint: z.enum(GENERALIZATION_CONSTRAINTS),
+  /** Logical (concept only) vs Physical (backed by one specific database table) — Entities only. */
+  representation: z.enum(NODE_REPRESENTATIONS),
+  /** Set when representation is "physical". Not validated against a live connection: the connection may since have been renamed or removed. */
+  physicalTable: z
+    .object({ connectionId: z.string().min(1), schema: z.string().min(1), table: z.string().min(1) })
+    .nullable(),
 };
 
 export const DomainNodeSchema = z.object({ id: z.string(), ...nodeShape });
@@ -275,6 +293,9 @@ export const WorkspaceFileSchema = z.object({
 
 export type NodeKind = z.infer<typeof NodeKindSchema>;
 export type RelationType = z.infer<typeof RelationTypeSchema>;
+export type GeneralizationConstraint = (typeof GENERALIZATION_CONSTRAINTS)[number];
+export type NodeRepresentation = (typeof NODE_REPRESENTATIONS)[number];
+export type PhysicalTableRef = { connectionId: string; schema: string; table: string };
 export type Context = z.infer<typeof ContextSchema>;
 export type ContextInput = z.infer<typeof ContextInputSchema>;
 export type ContextUpdate = z.infer<typeof ContextUpdateSchema>;
@@ -345,6 +366,9 @@ export function normalizeNode(raw: DomainNodeInput & { id: string }): DomainNode
         : kind === "query-handler" || kind === "read-model"
           ? "query"
           : "none"),
+    generalizationConstraint: raw.generalizationConstraint ?? "none",
+    representation: raw.representation ?? "logical",
+    physicalTable: raw.representation === "physical" ? (raw.physicalTable ?? null) : null,
   };
 }
 

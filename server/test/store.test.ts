@@ -92,6 +92,7 @@ test("positions round-trip, and pre-pixel (percentage) layouts are discarded so 
   first.state.nodes.push({
     id: "n", contextId: "c", kind: "entity", name: "N", description: "", status: "draft", x: 480, y: 96, tags: [], methods: [],
     invariants: [], eventVersion: "1.0.0", eventPayloadSchema: "", eventCompatibility: "backward", sagaStyle: "none", cqrsSide: "none",
+    generalizationConstraint: "none", representation: "logical", physicalTable: null,
   });
   first.save();
   const again = tempStore({ dir });

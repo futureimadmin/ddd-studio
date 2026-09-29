@@ -1,5 +1,29 @@
 /** How each relationship type looks, and which type to pick when the user just drags A onto B. */
 
+/**
+ * Context-mapping (strategic) types. These describe integration between two *bounded contexts*
+ * as wholes (DDD's Customer-Supplier, Conformist, Anti-Corruption Layer, Open Host Service,
+ * Published Language, Partnership, Shared Kernel, Separate Ways) — they belong on the Context
+ * Map. Everything else is a tactical, element-level relationship and belongs on the Domain
+ * designer / Event storming boards.
+ */
+export const CONTEXT_MAP_TYPES = [
+  'shared-kernel',
+  'customer-supplier',
+  'conformist',
+  'anti-corruption',
+  'open-host-service',
+  'published-language',
+  'partnership',
+  'separate-ways',
+] as const;
+export const CONTEXT_MAP_TYPE_SET = new Set<string>(CONTEXT_MAP_TYPES);
+export const isStrategicType = (type: string) => CONTEXT_MAP_TYPE_SET.has(type);
+
+/** Tactical types that express strong structural ownership — DDD discourages these across a context boundary. */
+const STRUCTURAL_TYPES = new Set(['composition', 'aggregation', 'owns']);
+export const isStructuralType = (type: string) => STRUCTURAL_TYPES.has(type);
+
 export const RELATION_COLORS: Record<string, string> = {
   uses: 'hsl(var(--primary))',
   aggregation: 'hsl(var(--accent))',
@@ -40,9 +64,13 @@ export function styleFor(type: string): EdgeStyle {
       return { start: 'diamond-filled', end: 'arrow' };
     case 'aggregation':
       return { start: 'diamond-hollow', end: 'arrow' };
+    // Generalization: solid line, hollow triangle (class inheritance — "is a").
     case 'generalization':
-    case 'specialization':
       return { end: 'triangle' };
+    // Specialization / Realization: dashed line, hollow triangle — UML's Realization notation
+    // ("implements"), reused here for the subtype-facing direction of a hierarchy too.
+    case 'specialization':
+      return { end: 'triangle', dash: '6 4' };
     case 'uses':
     case 'subscribes':
       return { end: 'arrow', dash: '7 5' };
@@ -77,6 +105,32 @@ export const MARKER_SHAPES: MarkerShape[] = ['arrow', 'arrow-filled', 'diamond-h
 /** Distinct colours in use, so one marker per shape and colour can be defined once. */
 export const MARKER_COLORS = [...new Set(Object.values(RELATION_COLORS)), 'hsl(var(--accent))'];
 export const markerId = (shape: MarkerShape, color: string) => `ddd-mk-${shape}-${MARKER_COLORS.indexOf(color)}`;
+
+/**
+ * The arrowhead/diamond geometry for each marker shape, in its own small coordinate box.
+ * Shared by the canvas's <marker> defs (diagram-parts.tsx) and the palette's inline previews
+ * (symbol-palette.tsx), so what you pick in the palette is exactly what you see on the canvas.
+ */
+export const MARKER_GEOMETRY: Record<MarkerShape, { w: number; h: number; refX: number; orient: string; path: string; filled: boolean; hollow?: boolean }> = {
+  arrow: { w: 10, h: 10, refX: 9, orient: 'auto-start-reverse', path: 'M0,0 L10,5 L0,10', filled: false },
+  'arrow-filled': { w: 10, h: 10, refX: 9, orient: 'auto-start-reverse', path: 'M0,0 L10,5 L0,10 z', filled: true },
+  'diamond-hollow': { w: 14, h: 10, refX: 1, orient: 'auto', path: 'M0,5 L7,0 L14,5 L7,10 z', filled: false, hollow: true },
+  'diamond-filled': { w: 14, h: 10, refX: 1, orient: 'auto', path: 'M0,5 L7,0 L14,5 L7,10 z', filled: true },
+  triangle: { w: 12, h: 10, refX: 11, orient: 'auto', path: 'M0,0 L12,5 L0,10 z', filled: false, hollow: true },
+};
+
+/**
+ * UML generalization-set constraints: set on a shared *superclass* element (two or more
+ * generalization/specialization arrows point at it) to say whether an instance can be more than
+ * one subtype at once. Not a connection between two elements — a badge on that one element.
+ */
+export const GENERALIZATION_CONSTRAINTS = ['and', 'or', 'xor'] as const;
+export type GeneralizationConstraint = (typeof GENERALIZATION_CONSTRAINTS)[number] | 'none';
+export const GENERALIZATION_CONSTRAINT_META: Record<(typeof GENERALIZATION_CONSTRAINTS)[number], { label: string; hint: string }> = {
+  and: { label: 'AND (overlapping)', hint: 'Can be more than one subtype at once' },
+  or: { label: 'OR (inclusive)', hint: 'At least one subtype applies' },
+  xor: { label: 'XOR (disjoint)', hint: 'Exactly one subtype at a time' },
+};
 
 const DOMAIN_LEAF = new Set(['entity', 'value-object']);
 const AGGREGATE_LIKE = new Set(['aggregate', 'aggregate-root']);
@@ -113,7 +167,9 @@ export function inferRelation(sourceKind: string, targetKind: string): Inferred 
   if (sourceKind === 'repository' && AGGREGATE_LIKE.has(targetKind)) return { type: 'uses', swap: false };
   if (sourceKind === 'resource' && targetKind !== 'resource') return { type: 'exposed-by', swap: true };
   if (targetKind === 'resource') return { type: 'exposed-by', swap: false };
-  if (sourceKind === 'anti-corruption-layer') return { type: 'anti-corruption', swap: false };
+  // 'anti-corruption' itself is a context-mapping type (two *contexts*, drawn on the Context Map) —
+  // an ACL's tactical link to another element is a plain dependency (it translates what it uses).
+  if (sourceKind === 'anti-corruption-layer') return { type: 'uses', swap: false };
   if (sourceKind === 'saga' || sourceKind === 'process-manager') return { type: 'orchestrates', swap: false };
   return { type: 'uses', swap: false };
 }

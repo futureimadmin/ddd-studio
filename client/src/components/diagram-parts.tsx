@@ -9,9 +9,9 @@ import {
   type Node,
   type NodeProps,
 } from '@xyflow/react';
-import { StickyNote } from 'lucide-react';
+import { Database, StickyNote } from 'lucide-react';
 import { EVENT_KINDS } from '@/components/symbol-palette';
-import { MARKER_COLORS, MARKER_SHAPES, colorFor, markerId, styleFor, type MarkerShape } from '@/diagram/relations';
+import { MARKER_COLORS, MARKER_GEOMETRY, MARKER_SHAPES, colorFor, markerId, styleFor, type GeneralizationConstraint, type MarkerShape } from '@/diagram/relations';
 import { toPath, type Point } from '@/diagram/router';
 
 // ---------------------------------------------------------------------------- node data
@@ -24,6 +24,10 @@ export type ElementData = {
   methods: string[];
   color: string;
   dimmed: boolean;
+  /** Set when this Entity stands for one specific database table ("schema.table" for the title). */
+  physicalTable: string | null;
+  /** Set when this element is the shared superclass of a generalization/specialization set. */
+  generalizationConstraint: GeneralizationConstraint;
 };
 export type ContextBoxData = { name: string; purpose: string; color: string; elements: number; dimmed: boolean };
 export type BoundaryData = { name: string; color: string; count: number };
@@ -67,6 +71,20 @@ function ConnectHandles() {
 
 const ring = (selected: boolean | undefined) => (selected ? 'border-primary ring-2 ring-primary/25' : 'border-border');
 
+/** AND / OR / XOR badge for a generalization-set superclass. */
+function GeneralizationBadge({ constraint }: { constraint: GeneralizationConstraint }) {
+  if (constraint === 'none') return null;
+  return (
+    <span
+      className="absolute -right-1.5 -top-1.5 z-10 flex h-5 items-center rounded-full border border-card bg-primary px-1.5 font-mono-ui text-[8px] font-bold uppercase tracking-wide text-primary-foreground shadow-sm"
+      title={`Generalization set: ${constraint.toUpperCase()}`}
+      data-testid="badge-generalization-constraint"
+    >
+      {constraint}
+    </span>
+  );
+}
+
 export function ElementNode({ data, selected }: NodeProps<ElementNodeType>) {
   return (
     <div
@@ -74,10 +92,18 @@ export function ElementNode({ data, selected }: NodeProps<ElementNodeType>) {
       style={{ opacity: data.dimmed ? 0.28 : 1 }}
       data-testid="node-card"
     >
+      <GeneralizationBadge constraint={data.generalizationConstraint} />
       <span className="absolute inset-y-0 left-0 w-1" style={{ backgroundColor: data.color }} />
       <div className="flex min-h-0 flex-1 flex-col px-3 py-2 pl-4">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate font-mono-ui text-[9px] uppercase tracking-[.08em] text-muted-foreground">{data.kind}</span>
+          <span className="flex min-w-0 items-center gap-1 truncate font-mono-ui text-[9px] uppercase tracking-[.08em] text-muted-foreground">
+            {data.kind}
+            {data.physicalTable && (
+              <span title={`Physical table: ${data.physicalTable}`} className="shrink-0 leading-none">
+                <Database size={9} className="text-foreground/60" aria-label={`Physical table: ${data.physicalTable}`} />
+              </span>
+            )}
+          </span>
           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDot(data.status)}`} title={data.status} />
         </div>
         <div className="mt-0.5 truncate text-[13px] font-semibold leading-tight" data-testid="text-node-name">
@@ -231,14 +257,6 @@ export function ConnectionLine({ fromX, fromY, toX, toY }: ConnectionLineCompone
 
 // ---------------------------------------------------------------------------- shared SVG definitions
 
-const GEOMETRY: Record<MarkerShape, { w: number; h: number; refX: number; orient: string; path: string; filled: boolean; hollow?: boolean }> = {
-  arrow: { w: 10, h: 10, refX: 9, orient: 'auto-start-reverse', path: 'M0,0 L10,5 L0,10', filled: false },
-  'arrow-filled': { w: 10, h: 10, refX: 9, orient: 'auto-start-reverse', path: 'M0,0 L10,5 L0,10 z', filled: true },
-  'diamond-hollow': { w: 14, h: 10, refX: 1, orient: 'auto', path: 'M0,5 L7,0 L14,5 L7,10 z', filled: false, hollow: true },
-  'diamond-filled': { w: 14, h: 10, refX: 1, orient: 'auto', path: 'M0,5 L7,0 L14,5 L7,10 z', filled: true },
-  triangle: { w: 12, h: 10, refX: 11, orient: 'auto', path: 'M0,0 L12,5 L0,10 z', filled: false, hollow: true },
-};
-
 /** Markers can not inherit an edge's colour, so one is defined per shape and colour. */
 export function MarkerDefs() {
   return (
@@ -246,7 +264,7 @@ export function MarkerDefs() {
       <defs>
         {MARKER_COLORS.flatMap((color) =>
           MARKER_SHAPES.map((shape) => {
-            const g = GEOMETRY[shape];
+            const g = MARKER_GEOMETRY[shape];
             return (
               <marker key={`${shape}-${color}`} id={markerId(shape, color)} markerWidth={g.w} markerHeight={g.h} refX={g.refX} refY={5} orient={g.orient} markerUnits="userSpaceOnUse">
                 <path
