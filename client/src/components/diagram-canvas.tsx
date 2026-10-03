@@ -86,6 +86,8 @@ export type DiagramProps = {
   onConnect: (sourceId: string, targetId: string) => void;
   onDropKind?: (kind: string, at: Position) => void;
   onDeleteSelected?: () => void;
+  /** Right-click on an element or a bounded-context node (never the auto-drawn boundary). */
+  onNodeContextMenu?: (id: string, x: number, y: number) => void;
 };
 
 const SIZES: Record<BoardMode, { w: number; h: number }> = {
@@ -98,7 +100,7 @@ const BOUNDARY_PREFIX = 'boundary:';
 
 function Canvas(props: DiagramProps) {
   const { mode, items, edges, contexts, selectedId, selectedEdgeId, matchIds, highlightIds, showGrid, showLabels } = props;
-  const { onSelectItem, onSelectEdge, onMove, onConnect, onDropKind, onDeleteSelected } = props;
+  const { onSelectItem, onSelectEdge, onMove, onConnect, onDropKind, onDeleteSelected, onNodeContextMenu } = props;
   const size = SIZES[mode];
   const rf = useReactFlow();
 
@@ -480,6 +482,9 @@ function Canvas(props: DiagramProps) {
       className="ddd-canvas relative h-full w-full outline-none"
       tabIndex={0}
       onKeyDown={onKeyDown}
+      // Fallback for anything a node-specific menu doesn't cover (edges, the boundary, empty canvas):
+      // no custom menu there yet, but the browser's own right-click menu has no business on a diagram.
+      onContextMenu={(e) => e.preventDefault()}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes('application/x-ddd-relation')) {
           e.preventDefault();
@@ -513,6 +518,10 @@ function Canvas(props: DiagramProps) {
         }}
         onNodeDragStart={onNodeDragStart}
         onNodeDragStop={onNodeDragStop}
+        onNodeContextMenu={(event, node) => {
+          event.preventDefault();
+          if (!node.id.startsWith(BOUNDARY_PREFIX)) onNodeContextMenu?.(node.id, event.clientX, event.clientY);
+        }}
         onConnect={handleConnect}
         isValidConnection={(c) => c.source !== c.target}
         connectionLineComponent={ConnectionLine}

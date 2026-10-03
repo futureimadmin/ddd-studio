@@ -4,12 +4,19 @@ import {
   ArrowLeftRight,
   ArrowRight,
   Check,
+  Copy,
+  Database,
+  Flag,
+  FolderInput,
   GitBranch,
   Link2,
   Map as MapIcon,
+  Palette as ColorIcon,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
+  Shapes,
   StickyNote,
   Trash2,
   X,
@@ -56,8 +63,9 @@ import {
 import { usePreferences } from '@/lib/preferences';
 import { notify, notifyError } from '@/lib/toast';
 import { DiagramCanvas, type DiagramEdge, type DiagramItem, type Move } from '@/components/diagram-canvas';
+import { ContextMenu, type MenuItem } from '@/components/context-menu';
 import { GENERALIZATION_CONSTRAINTS, inferRelation, isStrategicType, isStructuralType } from '@/diagram/relations';
-import { EVENT_KINDS, EventSticky, SymbolPalette } from '@/components/symbol-palette';
+import { CONTEXT_RELATIONSHIPS, EVENT_KINDS, EventSticky, SymbolPalette, UML_RELATIONSHIPS } from '@/components/symbol-palette';
 
 const nodeKinds = [
   'aggregate',
@@ -289,6 +297,7 @@ export default function WorkspacePage() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [pendingPosition, setPendingPosition] = useState<{ x: number; y: number } | null>(null);
   const [activeRelationType, setActiveRelationType] = useState<string | null>(null);
+  const [nodeMenu, setNodeMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
   const { showGrid } = usePreferences();
   const aiStatus = useAiAuthStatus(modal === 'ai' || modal === 'codegen');
@@ -798,6 +807,202 @@ export default function WorkspacePage() {
     }
   };
 
+  const removeNodeById = (id: string) => {
+    const node = nodes.find((n) => n.id === id);
+    if (node && window.confirm(`Delete ${node.name}?`))
+      deleteNode.mutate(
+        { id },
+        {
+          onSuccess: () => {
+            invalidateMap();
+            if (selectedId === id) setSelectedId(null);
+            notify('Element removed');
+          },
+        },
+      );
+  };
+
+  const removeContextById = (id: string) => {
+    const context = contexts.find((c) => c.id === id);
+    if (context && window.confirm(`Delete ${context.name}?`))
+      deleteContext.mutate(
+        { id },
+        {
+          onSuccess: () => {
+            invalidateMap();
+            if (selectedId === id) setSelectedId(null);
+            notify('Context removed');
+          },
+        },
+      );
+  };
+
+  /** Same element, fresh id: name gets " copy", position is cleared so it lands beside its context, and any generalization-set role is dropped (a clone starts with none of the original's subtypes). */
+  const duplicateNode = (id: string) => {
+    const node = nodes.find((n) => n.id === id);
+    if (!node) return;
+    const { id: _id, x: _x, y: _y, generalizationConstraint: _constraint, name, ...rest } = node;
+    createNode.mutate(
+      { data: { ...rest, name: `${name} copy`, x: null, y: null } },
+      {
+        onSuccess: (created) => {
+          invalidateMap();
+          setSelectedId(created.id);
+          notify('Element duplicated');
+        },
+      },
+    );
+  };
+
+  const setNodeStatus = (id: string, status: 'draft' | 'validated' | 'needs-review') =>
+    updateNode.mutate({ id, data: { status } }, { onSuccess: () => { invalidateMap(); notify('Status updated'); } });
+
+  const moveNodeToContext = (id: string, contextId: string) =>
+    updateNode.mutate(
+      { id, data: { contextId, x: null, y: null } },
+      { onSuccess: () => { invalidateMap(); notify('Moved to another context'); } },
+    );
+
+  const setNodeRepresentation = (id: string, representation: 'logical' | 'physical') =>
+    updateNode.mutate({ id, data: { representation } }, { onSuccess: () => { invalidateMap(); notify('Representation updated'); } });
+
+  const setNodeGeneralizationConstraint = (id: string, value: (typeof GENERALIZATION_CONSTRAINTS)[number] | 'none') =>
+    updateNode.mutate({ id, data: { generalizationConstraint: value } }, { onSuccess: () => { invalidateMap(); notify('Generalization set updated'); } });
+
+  const setContextColor = (id: string, color: string) =>
+    updateContext.mutate({ id, data: { color } }, { onSuccess: () => invalidateMap() });
+
+  const armRelation = (type: string) => {
+    setActiveRelationType(type);
+    notify(`Drag from the dot on this element to connect it as "${type}".`);
+  };
+
+  /** What right-clicking this node offers: a domain element/sticky, or a bounded context on the Context Map. */
+  const buildNodeMenu = (id: string): MenuItem[] => {
+    if (viewTab === 'context-map') {
+      const context = contexts.find((c) => c.id === id);
+      if (!context) return [];
+      return [
+        { kind: 'item', key: 'edit', label: 'Edit context…', icon: Pencil, onSelect: () => beginEditContext(id) },
+        {
+          kind: 'submenu',
+          key: 'color',
+          label: 'Change color',
+          icon: ColorIcon,
+          items: contextColors.map((color) => ({
+            kind: 'item',
+            key: `color-${color}`,
+            label: color,
+            active: context.color === color,
+            onSelect: () => setContextColor(id, color),
+          })),
+        },
+        {
+          kind: 'submenu',
+          key: 'relate',
+          label: 'Add relationship',
+          icon: Link2,
+          items: CONTEXT_RELATIONSHIPS.map((rel) => ({
+            kind: 'item',
+            key: `rel-${rel.type}`,
+            label: rel.label,
+            active: activeRelationType === rel.type,
+            onSelect: () => armRelation(rel.type),
+          })),
+        },
+        { kind: 'separator', key: 'sep-delete' },
+        { kind: 'item', key: 'delete', label: 'Delete context', icon: Trash2, danger: true, onSelect: () => removeContextById(id) },
+      ];
+    }
+
+    const node = nodes.find((n) => n.id === id);
+    if (!node) return [];
+    const incomingGeneralizations = relationships.filter(
+      (r) => r.targetId === node.id && (r.type === 'generalization' || r.type === 'specialization'),
+    );
+
+    const items: MenuItem[] = [
+      { kind: 'item', key: 'edit', label: 'Edit details', icon: Pencil, onSelect: () => onSelectItem(id) },
+      { kind: 'item', key: 'duplicate', label: 'Duplicate', icon: Copy, onSelect: () => duplicateNode(id) },
+      {
+        kind: 'submenu',
+        key: 'status',
+        label: 'Change status',
+        icon: Flag,
+        items: (['draft', 'validated', 'needs-review'] as const).map((status) => ({
+          kind: 'item',
+          key: `status-${status}`,
+          label: status,
+          active: node.status === status,
+          onSelect: () => setNodeStatus(id, status),
+        })),
+      },
+    ];
+
+    if (viewTab === 'designer') {
+      items.push({
+        kind: 'submenu',
+        key: 'relate',
+        label: 'Add relationship',
+        icon: Link2,
+        items: UML_RELATIONSHIPS.map((rel) => ({
+          kind: 'item',
+          key: `rel-${rel.type}`,
+          label: rel.label,
+          active: activeRelationType === rel.type,
+          onSelect: () => armRelation(rel.type),
+        })),
+      });
+      items.push({
+        kind: 'submenu',
+        key: 'move',
+        label: 'Move to context',
+        icon: FolderInput,
+        items: contexts.map((c) => ({
+          kind: 'item',
+          key: `ctx-${c.id}`,
+          label: c.name,
+          active: c.id === node.contextId,
+          disabled: c.id === node.contextId,
+          onSelect: () => moveNodeToContext(id, c.id),
+        })),
+      });
+    }
+
+    if (node.kind === 'entity') {
+      items.push({
+        kind: 'submenu',
+        key: 'representation',
+        label: 'Representation',
+        icon: Database,
+        items: [
+          { kind: 'item', key: 'rep-logical', label: 'Logical', active: node.representation !== 'physical', onSelect: () => setNodeRepresentation(id, 'logical') },
+          { kind: 'item', key: 'rep-physical', label: 'Physical…', active: node.representation === 'physical', onSelect: () => onSelectItem(id) },
+        ],
+      });
+    }
+
+    if (incomingGeneralizations.length >= 2) {
+      items.push({
+        kind: 'submenu',
+        key: 'generalization',
+        label: 'Generalization set',
+        icon: Shapes,
+        items: (['none', ...GENERALIZATION_CONSTRAINTS] as const).map((value) => ({
+          kind: 'item',
+          key: `gen-${value}`,
+          label: value === 'none' ? 'None' : value.toUpperCase(),
+          active: (node.generalizationConstraint ?? 'none') === value,
+          onSelect: () => setNodeGeneralizationConstraint(id, value),
+        })),
+      });
+    }
+
+    items.push({ kind: 'separator', key: 'sep-delete' });
+    items.push({ kind: 'item', key: 'delete', label: 'Delete', icon: Trash2, danger: true, onSelect: () => removeNodeById(id) });
+    return items;
+  };
+
   const isLoading = workspace.isLoading || contextsQuery.isLoading || nodesQuery.isLoading || relationshipsQuery.isLoading;
   if (isLoading && !contexts.length && !nodes.length) {
     return (
@@ -1127,7 +1332,14 @@ export default function WorkspacePage() {
                 onConnect={connectItems}
                 onDropKind={viewTab === 'context-map' ? undefined : (kind, at) => openNewNode(kind, at)}
                 onDeleteSelected={deleteSelected}
+                onNodeContextMenu={(id, x, y) => {
+                  onSelectItem(id);
+                  setNodeMenu({ id, x, y });
+                }}
               />
+              {nodeMenu && (
+                <ContextMenu x={nodeMenu.x} y={nodeMenu.y} items={buildNodeMenu(nodeMenu.id)} onClose={() => setNodeMenu(null)} />
+              )}
             </div>
           </div>
         </section>
