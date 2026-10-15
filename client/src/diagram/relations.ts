@@ -1,3 +1,6 @@
+const EVENT_KINDS_SET = new Set(['domain-event', 'integration-event', 'external-event']);
+const isEventKind = (k: string) => EVENT_KINDS_SET.has(k);
+
 /** How each relationship type looks, and which type to pick when the user just drags A onto B. */
 
 /**
@@ -150,20 +153,20 @@ export function inferRelation(sourceKind: string, targetKind: string): Inferred 
   if (DOMAIN_LEAF.has(sourceKind) && AGGREGATE_LIKE.has(targetKind)) return { type: 'composition', swap: true };
   if (pair('entity', 'value-object')) return { type: 'composition', swap: false };
   if (pair('value-object', 'entity')) return { type: 'composition', swap: true };
-  if (AGGREGATE_LIKE.has(sourceKind) && targetKind === 'domain-event') return { type: 'publishes', swap: false };
-  if (sourceKind === 'domain-event' && AGGREGATE_LIKE.has(targetKind)) return { type: 'publishes', swap: true };
-  if (sourceKind === 'command' && targetKind === 'domain-event') return { type: 'triggers', swap: false };
+  if (AGGREGATE_LIKE.has(sourceKind) && isEventKind(targetKind)) return { type: 'publishes', swap: false };
+  if (isEventKind(sourceKind) && AGGREGATE_LIKE.has(targetKind)) return { type: 'publishes', swap: true };
+  if (sourceKind === 'command' && isEventKind(targetKind)) return { type: 'triggers', swap: false };
   if ((sourceKind === 'actor' || sourceKind === 'policy') && targetKind === 'command') return { type: 'triggers', swap: false };
-  if (sourceKind === 'domain-event' && (targetKind === 'policy' || targetKind === 'saga' || targetKind === 'process-manager')) {
+  if (isEventKind(sourceKind) && (targetKind === 'policy' || targetKind === 'saga' || targetKind === 'process-manager')) {
     return { type: 'reacts-to', swap: true };
   }
-  if ((sourceKind === 'policy' || sourceKind === 'saga' || sourceKind === 'process-manager') && targetKind === 'domain-event') {
+  if ((sourceKind === 'policy' || sourceKind === 'saga' || sourceKind === 'process-manager') && isEventKind(targetKind)) {
     return { type: 'reacts-to', swap: false };
   }
   if (sourceKind === 'command-handler' && targetKind === 'command') return { type: 'handles', swap: false };
   if (sourceKind === 'command' && targetKind === 'command-handler') return { type: 'handles', swap: true };
   if (sourceKind === 'query-handler' && targetKind === 'read-model') return { type: 'uses', swap: false };
-  if (sourceKind === 'domain-event' && targetKind === 'read-model') return { type: 'projects-to', swap: false };
+  if (isEventKind(sourceKind) && targetKind === 'read-model') return { type: 'projects-to', swap: false };
   if (sourceKind === 'repository' && AGGREGATE_LIKE.has(targetKind)) return { type: 'uses', swap: false };
   if (sourceKind === 'resource' && targetKind !== 'resource') return { type: 'exposed-by', swap: true };
   if (targetKind === 'resource') return { type: 'exposed-by', swap: false };

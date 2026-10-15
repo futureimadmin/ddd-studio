@@ -13,6 +13,8 @@ export const NODE_KINDS = [
   "entity",
   "value-object",
   "domain-event",
+  "integration-event",
+  "external-event",
   "command",
   "policy",
   "actor",
@@ -26,6 +28,14 @@ export const NODE_KINDS = [
   "command-handler",
   "query-handler",
 ] as const;
+
+/** Event kinds used on the event-storming board (distinct colours / semantics). */
+export const EVENT_NODE_KINDS = ["domain-event", "integration-event", "external-event"] as const;
+export type EventNodeKind = (typeof EVENT_NODE_KINDS)[number];
+const EVENT_NODE_KIND_SET = new Set<string>(EVENT_NODE_KINDS);
+export function isEventKind(kind: string): kind is EventNodeKind {
+  return EVENT_NODE_KIND_SET.has(kind);
+}
 
 export const CONTEXT_MAP_TYPES = [
   "shared-kernel",
@@ -147,6 +157,11 @@ const nodeShape = {
   physicalTable: z
     .object({ connectionId: z.string().min(1), schema: z.string().min(1), table: z.string().min(1) })
     .nullable(),
+  /**
+   * Owning aggregate or aggregate-root for domain events (and optionally integration events).
+   * Domain events should always declare an owner; the designer creates a `publishes` edge on create.
+   */
+  aggregateId: z.string().min(1).nullable(),
 };
 
 export const DomainNodeSchema = z.object({ id: z.string(), ...nodeShape });
@@ -369,6 +384,7 @@ export function normalizeNode(raw: DomainNodeInput & { id: string }): DomainNode
     generalizationConstraint: raw.generalizationConstraint ?? "none",
     representation: raw.representation ?? "logical",
     physicalTable: raw.representation === "physical" ? (raw.physicalTable ?? null) : null,
+    aggregateId: raw.aggregateId ?? null,
   };
 }
 

@@ -73,6 +73,8 @@ const nodeKinds = [
   'entity',
   'value-object',
   'domain-event',
+  'integration-event',
+  'external-event',
   'command',
   'policy',
   'actor',
@@ -83,7 +85,12 @@ const nodeKinds = [
   'anti-corruption-layer',
   'saga',
   'process-manager',
+  'command-handler',
+  'query-handler',
 ] as const;
+
+/** Sticky kinds that are true events (not commands/policies on the storm board). */
+const EVENT_ONLY_KINDS = new Set(['domain-event', 'integration-event', 'external-event']);
 const relationshipTypes = [
   'uses',
   'aggregation',
@@ -260,7 +267,7 @@ export default function WorkspacePage() {
   const [contextFilter, setContextFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [viewTab, setViewTab] = useState<ViewTab>('designer');
-  const [modal, setModal] = useState<'context' | 'node' | 'relationship' | 'context-relationship' | 'ai' | 'codegen' | null>(null);
+  const [modal, setModal] = useState<'context' | 'node' | 'relationship' | 'context-relationship' | 'ai' | 'codegen' | 'event-listener' | null>(null);
   const [editingContext, setEditingContext] = useState<string | null>(null);
   const [nodeForm, setNodeForm] = useState({
     contextId: '',
@@ -270,7 +277,14 @@ export default function WorkspacePage() {
     status: 'draft',
     tags: '',
     methods: '',
+    aggregateId: '',
   });
+  const [pendingListenerEvent, setPendingListenerEvent] = useState<{
+    id: string;
+    name: string;
+    kind: string;
+    contextId: string;
+  } | null>(null);
   const [contextForm, setContextForm] = useState({ name: '', purpose: '', color: contextColors[0] });
   const [relationshipForm, setRelationshipForm] = useState({
     sourceId: '',
@@ -539,33 +553,114 @@ export default function WorkspacePage() {
       status: 'draft',
       tags: '',
       methods: '',
+      aggregateId: '',
     });
     setModal('node');
   };
 
   const saveNode = () => {
     if (!nodeForm.name.trim() || !nodeForm.contextId) return;
+    const isEvent = EVENT_ONLY_KINDS.has(nodeForm.kind);
+    if (isEvent && nodeForm.kind === 'domain-event' && !nodeForm.aggregateId) {
+      notify('Associate this domain event with an aggregate or aggregate-root', 'warning');
+      return;
+    }
     createNode.mutate(
       {
         data: {
-          ...nodeForm,
+          contextId: nodeForm.contextId,
+          kind: nodeForm.kind as (typeof nodeKinds)[number],
           name: nodeForm.name.trim(),
           description: nodeForm.description.trim(),
           status: nodeForm.status as 'draft' | 'validated' | 'needs-review',
-          kind: nodeForm.kind as (typeof nodeKinds)[number],
           // A drop from the palette keeps its position; otherwise the canvas places it beside its context.
           ...(pendingPosition ?? {}),
           tags: parseList(nodeForm.tags),
           methods: parseList(nodeForm.methods),
+          aggregateId: nodeForm.aggregateId || null,
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: (created) => {
           invalidateMap();
           setModal(null);
-          notify(EVENT_KIND_SET.has(nodeForm.kind as never) ? 'Event sticky added' : 'Node added to the map');
+          const ownerId = nodeForm.aggregateId;
+          if (isEvent && ownerId) {
+            createRelationship.mutate(
+              {
+                data: {
+                  sourceId: ownerId,
+                  targetId: created.id,
+                  type: 'publishes',
+                  label: 'publishes',
+                  contextId: nodeForm.contextId,
+                },
+              },
+              { onSuccess: () => invalidateMap() },
+            );
+          }
+          if (isEvent) {
+            notify(`${nodeForm.kind.replace(/-/g, ' ')} added — associate a listener next`);
+            setPendingListenerEvent({
+              id: created.id,
+              name: created.name,
+              kind: created.kind,
+              contextId: created.contextId,
+            });
+            setModal('event-listener');
+          } else {
+            notify('Node added to the map');
+            try {
+              const raw = sessionStorage.getItem('ddd-pending-reacts-to');
+              if (raw && (created.kind === 'policy' || created.kind === 'saga' || created.kind === 'process-manager')) {
+                const pending = JSON.parse(raw) as { eventId: string; contextId: string };
+                sessionStorage.removeItem('ddd-pending-reacts-to');
+                createRelationship.mutate(
+                  {
+                    data: {
+                      sourceId: created.id,
+                      targetId: pending.eventId,
+                      type: 'reacts-to',
+                      label: 'reacts to',
+                      contextId: pending.contextId || created.contextId,
+                    },
+                  },
+                  { onSuccess: () => invalidateMap() },
+                );
+                notify(`Linked ${created.name} → reacts-to event`);
+              }
+            } catch {
+              /* ignore */
+            }
+          }
         },
       },
+    );
+  };
+
+  const startListenerForPending = (listenerKind: 'policy' | 'saga' | 'process-manager') => {
+    if (!pendingListenerEvent) return;
+    const ev = pendingListenerEvent;
+    setPendingListenerEvent(null);
+    setPendingPosition(null);
+    setNodeForm({
+      contextId: ev.contextId,
+      kind: listenerKind,
+      name: listenerKind === 'policy' ? `When${ev.name}` : `${ev.name}Listener`,
+      description:
+        listenerKind === 'policy'
+          ? `Whenever ${ev.name}, then …`
+          : `Listens to ${ev.name} (${ev.kind})`,
+      status: 'draft',
+      tags: 'listener',
+      methods: listenerKind === 'saga' || listenerKind === 'process-manager' ? 'onEvent(),compensate()' : '',
+      aggregateId: '',
+    });
+    setModal('node');
+    // After listener is created we still need reacts-to — user connects, or we store pending link
+    sessionStorage.setItem(
+      'ddd-pending-reacts-to',
+      JSON.stringify({ eventId: ev.id, eventName: ev.name, contextId: ev.contextId }),
     );
   };
 
@@ -1537,7 +1632,10 @@ export default function WorkspacePage() {
                   data-testid="select-node-kind"
                   className="h-10 w-full border border-input bg-background px-3 text-sm outline-none focus:border-primary"
                 >
-                  {nodeKinds.map((kind) => (
+                  {(EVENT_ONLY_KINDS.has(nodeForm.kind)
+                    ? nodeKinds.filter((k) => EVENT_ONLY_KINDS.has(k) || k === 'command' || k === 'policy' || k === 'actor')
+                    : nodeKinds
+                  ).map((kind) => (
                     <option value={kind} key={kind}>
                       {kind}
                     </option>
@@ -1560,6 +1658,37 @@ export default function WorkspacePage() {
                   ))}
                 </select>
               </label>
+
+            {EVENT_ONLY_KINDS.has(nodeForm.kind) && (
+              <label className="block">
+                <span className="mb-1.5 block font-mono-ui text-[10px] uppercase tracking-[.14em] text-muted-foreground">
+                  Aggregate / root {nodeForm.kind === 'domain-event' ? '(required)' : '(optional)'}
+                </span>
+                <select
+                  value={nodeForm.aggregateId}
+                  onChange={(e) => setNodeForm((f) => ({ ...f, aggregateId: e.target.value }))}
+                  data-testid="select-event-aggregate"
+                  className="h-10 w-full border border-input bg-background px-3 text-sm outline-none focus:border-primary"
+                >
+                  <option value="">Select owner…</option>
+                  {nodes
+                    .filter(
+                      (n) =>
+                        (n.kind === 'aggregate' || n.kind === 'aggregate-root') &&
+                        (nodeForm.kind !== 'domain-event' || n.contextId === nodeForm.contextId),
+                    )
+                    .map((n) => (
+                      <option key={n.id} value={n.id}>
+                        {n.name} · {n.kind}
+                      </option>
+                    ))}
+                </select>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Domain events belong to one aggregate. Integration events may cross contexts; external events come from outside systems.
+                </p>
+              </label>
+            )}
+
             </div>
             <Field
               label="Description"
@@ -1924,6 +2053,68 @@ export default function WorkspacePage() {
           </div>
         </Modal>
       )}
+
+      {modal === 'event-listener' && pendingListenerEvent && (
+        <Modal
+          title="Create event listener?"
+          eyebrow="loose coupling"
+          onClose={() => {
+            setPendingListenerEvent(null);
+            setModal(null);
+          }}
+          testId="modal-event-listener"
+        >
+          <div className="space-y-4">
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              <strong className="text-foreground">{pendingListenerEvent.name}</strong> (
+              {pendingListenerEvent.kind.replace(/-/g, ' ')}) has no listener yet. Publishers should not know
+              subscribers — add a policy or saga that <em>reacts to</em> this event.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                data-testid="button-listener-policy"
+                onClick={() => startListenerForPending('policy')}
+                className="border border-border px-3 py-2.5 text-left text-sm hover:border-primary"
+              >
+                <span className="font-medium">Policy</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">Whenever this event, then a command…</span>
+              </button>
+              <button
+                type="button"
+                data-testid="button-listener-saga"
+                onClick={() => startListenerForPending('saga')}
+                className="border border-border px-3 py-2.5 text-left text-sm hover:border-primary"
+              >
+                <span className="font-medium">Saga (orchestration)</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">Central process that listens and issues commands</span>
+              </button>
+              <button
+                type="button"
+                data-testid="button-listener-pm"
+                onClick={() => startListenerForPending('process-manager')}
+                className="border border-border px-3 py-2.5 text-left text-sm hover:border-primary"
+              >
+                <span className="font-medium">Process manager</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">Long-running listener with compensation</span>
+              </button>
+              <button
+                type="button"
+                data-testid="button-listener-skip"
+                onClick={() => {
+                  setPendingListenerEvent(null);
+                  setModal(null);
+                  notify('You can add a listener later from the palette or Process links');
+                }}
+                className="py-2 text-sm text-muted-foreground hover:text-foreground"
+              >
+                Skip for now
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
 
 
     </div>
