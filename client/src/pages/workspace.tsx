@@ -363,16 +363,6 @@ export default function WorkspacePage() {
     [eventNodes, contextFilter, search],
   );
 
-  const domainRelationships = useMemo(
-    () =>
-      relationships.filter((r) => {
-        const s = nodes.find((n) => n.id === r.sourceId);
-        const t = nodes.find((n) => n.id === r.targetId);
-        return s && t && !EVENT_KIND_SET.has(s.kind as never) && !EVENT_KIND_SET.has(t.kind as never);
-      }),
-    [relationships, nodes],
-  );
-
   const boardMode = viewTab === 'designer' ? 'designer' : viewTab === 'event-storming' ? 'storm' : 'contexts';
   const colorOf = useMemo(() => new Map(contexts.map((c) => [c.id, c.color])), [contexts]);
   const toItem = useCallback(
