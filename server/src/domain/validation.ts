@@ -1,5 +1,5 @@
 /** Structural + invariant checks. Pure: operates on whatever nodes/relationships it is given. */
-import { isContextMapType, type DomainNode, type Relationship, type ValidationIssue } from "./model";
+import { isContextMapType, isEventKind, type DomainNode, type Relationship, type ValidationIssue } from "./model";
 
 export type ModelView = { nodes: DomainNode[]; relationships: Relationship[] };
 
@@ -51,18 +51,62 @@ export function validateModel(model: ModelView, focusNodeId?: string): Validatio
       add("ROOT_NO_ASSERT", "warning", `Aggregate root "${node.name}" should expose assertInvariants() (or similar)`);
     }
 
-    if (node.kind === "domain-event") {
+    if (isEventKind(node.kind)) {
+      const label =
+        node.kind === "integration-event"
+          ? "Integration event"
+          : node.kind === "external-event"
+            ? "External event"
+            : "Domain event";
       if (!node.eventPayloadSchema.trim()) {
-        add("EVENT_NO_SCHEMA", "warning", `Domain event "${node.name}" has empty payload contract`);
+        add("EVENT_NO_SCHEMA", "warning", `${label} "${node.name}" has empty payload contract`);
       } else {
         try {
           const parsed: unknown = JSON.parse(node.eventPayloadSchema);
           if (typeof parsed !== "object" || parsed === null) {
-            add("EVENT_SCHEMA_NOT_OBJECT", "warning", `Domain event "${node.name}" payload schema should be a JSON object`);
+            add("EVENT_SCHEMA_NOT_OBJECT", "warning", `${label} "${node.name}" payload schema should be a JSON object`);
           }
         } catch {
           /* prose contracts are allowed */
         }
+      }
+      if (node.kind === "domain-event" && !node.aggregateId) {
+        add(
+          "EVENT_NO_AGGREGATE",
+          "warning",
+          `Domain event "${node.name}" is not associated with an aggregate or aggregate-root`,
+        );
+      }
+      if (node.aggregateId) {
+        const owner = nodeById.get(node.aggregateId);
+        if (!owner) {
+          add("EVENT_AGGREGATE_MISSING", "error", `${label} "${node.name}" references missing aggregateId ${node.aggregateId}`);
+        } else if (owner.kind !== "aggregate" && owner.kind !== "aggregate-root") {
+          add(
+            "EVENT_AGGREGATE_WRONG_KIND",
+            "error",
+            `${label} "${node.name}" owner must be aggregate or aggregate-root (got ${owner.kind})`,
+          );
+        } else if (node.kind === "domain-event" && owner.contextId !== node.contextId) {
+          add(
+            "EVENT_AGGREGATE_CROSS_CONTEXT",
+            "warning",
+            `Domain event "${node.name}" owner "${owner.name}" is in a different bounded context`,
+          );
+        }
+      }
+      // Listeners: reacts-to / subscribes / orchestrates pointing at this event
+      const listeners = relationships.filter(
+        (r) =>
+          r.targetId === node.id &&
+          (r.type === "reacts-to" || r.type === "subscribes" || r.type === "orchestrates"),
+      );
+      if (listeners.length === 0) {
+        add(
+          "EVENT_NO_LISTENER",
+          "warning",
+          `${label} "${node.name}" has no listener yet (policy, saga, or subscriber)`,
+        );
       }
     }
 

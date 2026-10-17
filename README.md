@@ -166,3 +166,15 @@ All routes are under `/api`. Request bodies are validated with Zod; errors are `
 - `client/src/components/diagram-canvas.tsx`, `diagram-parts.tsx` — the interactive canvas (React Flow for pan/zoom/drag/connect) and its cards, boundaries and edges
 - `client/src/pages/`, `client/src/components/` — Domain map, Glossary, Connections, Settings, palette
 - `server/test/`, `client/test/` — `npm test` runs both. Server: the API end to end plus the Postgres introspection SQL against a real in-process Postgres (PGlite). Client: the router (including "an element in the way", lane separation, randomised property tests and a performance budget) and the layout engine.
+
+---
+
+## Event kinds (event storming)
+
+| Kind | Colour | Association |
+|------|--------|-------------|
+| **Domain event** | Amber | Required: bounded context + aggregate/root; auto  edge |
+| **Integration event** | Rose | Bounded context; optional aggregate; cross-context contract |
+| **External event** | Fuchsia | Fact from outside systems |
+
+After creating an event, the designer prompts you to add a **listener** (policy / saga / process manager) and can wire  automatically.

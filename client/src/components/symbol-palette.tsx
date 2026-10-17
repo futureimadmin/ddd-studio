@@ -43,7 +43,9 @@ export const DOMAIN_KINDS = [
 ] as const;
 
 export const EVENT_KINDS = [
-  { kind: 'domain-event', label: 'Domain event', icon: Zap, hint: 'Something happened', color: 'bg-amber-400/90 text-amber-950' },
+  { kind: 'domain-event', label: 'Domain event', icon: Zap, hint: 'Fact inside one BC · past tense', color: 'bg-amber-400/90 text-amber-950' },
+  { kind: 'integration-event', label: 'Integration event', icon: Zap, hint: 'Cross-context contract · published language', color: 'bg-rose-400/90 text-rose-950' },
+  { kind: 'external-event', label: 'External event', icon: Zap, hint: 'Fact from an external system', color: 'bg-fuchsia-400/90 text-fuchsia-950' },
   { kind: 'command', label: 'Command', icon: Command, hint: 'Intent to change', color: 'bg-sky-400/90 text-sky-950' },
   { kind: 'policy', label: 'Policy', icon: Shield, hint: 'When X then Y', color: 'bg-violet-400/90 text-violet-950' },
   { kind: 'actor', label: 'Actor', icon: User, hint: 'Person or system', color: 'bg-emerald-400/90 text-emerald-950' },

@@ -140,7 +140,7 @@ export async function ${name.charAt(0).toLowerCase() + name.slice(1)}(command: {
     }
 
     if (scope === "full" || scope === "events") {
-      for (const ev of elements.filter((e) => e.kind === "domain-event")) {
+      for (const ev of elements.filter((e) => e.kind === "domain-event" || e.kind === "integration-event" || e.kind === "external-event")) {
         const name = pascal(ev.name);
         files.push({
           path: `src/${ctxSlug}/events/${name}.ts`,

@@ -73,6 +73,8 @@ const nodeKinds = [
   'entity',
   'value-object',
   'domain-event',
+  'integration-event',
+  'external-event',
   'command',
   'policy',
   'actor',
@@ -83,7 +85,12 @@ const nodeKinds = [
   'anti-corruption-layer',
   'saga',
   'process-manager',
+  'command-handler',
+  'query-handler',
 ] as const;
+
+/** Sticky kinds that are true events (not commands/policies on the storm board). */
+const EVENT_ONLY_KINDS = new Set(['domain-event', 'integration-event', 'external-event']);
 const relationshipTypes = [
   'uses',
   'aggregation',
@@ -260,7 +267,7 @@ export default function WorkspacePage() {
   const [contextFilter, setContextFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [viewTab, setViewTab] = useState<ViewTab>('designer');
-  const [modal, setModal] = useState<'context' | 'node' | 'relationship' | 'context-relationship' | 'ai' | 'codegen' | null>(null);
+  const [modal, setModal] = useState<'context' | 'node' | 'relationship' | 'context-relationship' | 'ai' | 'codegen' | 'event-listener' | null>(null);
   const [editingContext, setEditingContext] = useState<string | null>(null);
   const [nodeForm, setNodeForm] = useState({
     contextId: '',
@@ -270,7 +277,14 @@ export default function WorkspacePage() {
     status: 'draft',
     tags: '',
     methods: '',
+    aggregateId: '',
   });
+  const [pendingListenerEvent, setPendingListenerEvent] = useState<{
+    id: string;
+    name: string;
+    kind: string;
+    contextId: string;
+  } | null>(null);
   const [contextForm, setContextForm] = useState({ name: '', purpose: '', color: contextColors[0] });
   const [relationshipForm, setRelationshipForm] = useState({
     sourceId: '',
@@ -318,6 +332,11 @@ export default function WorkspacePage() {
   const selectedRelationship = relationships.find((r) => r.id === selectedRelationshipId);
 
   const domainNodes = useMemo(() => nodes.filter((n) => !EVENT_KIND_SET.has(n.kind as never)), [nodes]);
+  /** Designer shows structural elements always; when a BC is selected, also show that context's events. */
+  const designerSourceNodes = useMemo(() => {
+    if (contextFilter === 'all') return domainNodes;
+    return nodes.filter((n) => n.contextId === contextFilter);
+  }, [nodes, domainNodes, contextFilter]);
   const eventNodes = useMemo(() => nodes.filter((n) => EVENT_KIND_SET.has(n.kind as never)), [nodes]);
   const chainHighlight = useMemo(
     () => (viewTab === 'event-storming' ? buildEventChain(selectedId, nodes, relationships) : new Set<string>()),
@@ -326,12 +345,12 @@ export default function WorkspacePage() {
 
   const visibleNodes = useMemo(
     () =>
-      domainNodes.filter(
+      designerSourceNodes.filter(
         (node) =>
           (contextFilter === 'all' || node.contextId === contextFilter) &&
           (!search || `${node.name} ${node.kind} ${node.description}`.toLowerCase().includes(search.toLowerCase())),
       ),
-    [domainNodes, contextFilter, search],
+    [designerSourceNodes, contextFilter, search],
   );
 
   const visibleEvents = useMemo(
@@ -342,16 +361,6 @@ export default function WorkspacePage() {
           (!search || `${node.name} ${node.kind} ${node.description}`.toLowerCase().includes(search.toLowerCase())),
       ),
     [eventNodes, contextFilter, search],
-  );
-
-  const domainRelationships = useMemo(
-    () =>
-      relationships.filter((r) => {
-        const s = nodes.find((n) => n.id === r.sourceId);
-        const t = nodes.find((n) => n.id === r.targetId);
-        return s && t && !EVENT_KIND_SET.has(s.kind as never) && !EVENT_KIND_SET.has(t.kind as never);
-      }),
-    [relationships, nodes],
   );
 
   const boardMode = viewTab === 'designer' ? 'designer' : viewTab === 'event-storming' ? 'storm' : 'contexts';
@@ -373,7 +382,7 @@ export default function WorkspacePage() {
     }),
     [colorOf],
   );
-  const designerItems = useMemo(() => domainNodes.map(toItem), [domainNodes, toItem]);
+  const designerItems = useMemo(() => designerSourceNodes.map(toItem), [designerSourceNodes, toItem]);
   const stormItems = useMemo(() => eventNodes.map(toItem), [eventNodes, toItem]);
   const contextItems = useMemo<DiagramItem[]>(
     () =>
@@ -393,16 +402,14 @@ export default function WorkspacePage() {
       })),
     [contexts, nodes],
   );
-  const designerEdges = useMemo<DiagramEdge[]>(
-    () =>
-      // Strategic (context-mapping) relationships describe two *bounded contexts* as wholes; drawing
-      // them between whichever tactical elements happen to stand in for those contexts would be
-      // misleading here. They belong on, and only appear on, the Context Map.
-      domainRelationships
-        .filter((r) => !isStrategicType(r.type))
-        .map((r) => ({ id: r.id, source: r.sourceId, target: r.targetId, type: r.type, label: r.label })),
-    [domainRelationships],
-  );
+  const designerEdges = useMemo<DiagramEdge[]>(() => {
+    // Strategic (context-mapping) relationships belong only on the Context Map.
+    // When a BC is selected, include edges among all visible designer nodes (including events).
+    const ids = new Set(designerSourceNodes.map((n) => n.id));
+    return relationships
+      .filter((r) => !isStrategicType(r.type) && ids.has(r.sourceId) && ids.has(r.targetId))
+      .map((r) => ({ id: r.id, source: r.sourceId, target: r.targetId, type: r.type, label: r.label }));
+  }, [relationships, designerSourceNodes]);
   const stormEdges = useMemo<DiagramEdge[]>(() => {
     const ids = new Set(eventNodes.map((n) => n.id));
     return relationships
@@ -539,33 +546,118 @@ export default function WorkspacePage() {
       status: 'draft',
       tags: '',
       methods: '',
+      aggregateId: '',
     });
     setModal('node');
   };
 
   const saveNode = () => {
     if (!nodeForm.name.trim() || !nodeForm.contextId) return;
+    const isEvent = EVENT_ONLY_KINDS.has(nodeForm.kind);
+    if (isEvent && nodeForm.kind === 'domain-event' && !nodeForm.aggregateId) {
+      notify('Associate this domain event with an aggregate or aggregate-root', 'warning');
+      return;
+    }
+    if (isEvent && nodeForm.kind !== 'domain-event' && !nodeForm.aggregateId && !nodeForm.contextId) {
+      notify('Integration/external events need a bounded context or aggregate owner', 'warning');
+      return;
+    }
     createNode.mutate(
       {
         data: {
-          ...nodeForm,
+          contextId: nodeForm.contextId,
+          kind: nodeForm.kind as (typeof nodeKinds)[number],
           name: nodeForm.name.trim(),
           description: nodeForm.description.trim(),
           status: nodeForm.status as 'draft' | 'validated' | 'needs-review',
-          kind: nodeForm.kind as (typeof nodeKinds)[number],
           // A drop from the palette keeps its position; otherwise the canvas places it beside its context.
           ...(pendingPosition ?? {}),
           tags: parseList(nodeForm.tags),
           methods: parseList(nodeForm.methods),
+          aggregateId: nodeForm.aggregateId || null,
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: (created) => {
           invalidateMap();
           setModal(null);
-          notify(EVENT_KIND_SET.has(nodeForm.kind as never) ? 'Event sticky added' : 'Node added to the map');
+          const ownerId = nodeForm.aggregateId;
+          if (isEvent && ownerId) {
+            createRelationship.mutate(
+              {
+                data: {
+                  sourceId: ownerId,
+                  targetId: created.id,
+                  type: 'publishes',
+                  label: 'publishes',
+                  contextId: nodeForm.contextId,
+                },
+              },
+              { onSuccess: () => invalidateMap() },
+            );
+          }
+          if (isEvent) {
+            notify(`${nodeForm.kind.replace(/-/g, ' ')} added — associate a listener next`);
+            setPendingListenerEvent({
+              id: created.id,
+              name: created.name,
+              kind: created.kind,
+              contextId: created.contextId,
+            });
+            setModal('event-listener');
+          } else {
+            notify('Node added to the map');
+            try {
+              const raw = sessionStorage.getItem('ddd-pending-reacts-to');
+              if (raw && (created.kind === 'policy' || created.kind === 'saga' || created.kind === 'process-manager')) {
+                const pending = JSON.parse(raw) as { eventId: string; contextId: string };
+                sessionStorage.removeItem('ddd-pending-reacts-to');
+                createRelationship.mutate(
+                  {
+                    data: {
+                      sourceId: created.id,
+                      targetId: pending.eventId,
+                      type: 'reacts-to',
+                      label: 'reacts to',
+                      contextId: pending.contextId || created.contextId,
+                    },
+                  },
+                  { onSuccess: () => invalidateMap() },
+                );
+                notify(`Linked ${created.name} → reacts-to event`);
+              }
+            } catch {
+              /* ignore */
+            }
+          }
         },
       },
+    );
+  };
+
+  const startListenerForPending = (listenerKind: 'policy' | 'saga' | 'process-manager') => {
+    if (!pendingListenerEvent) return;
+    const ev = pendingListenerEvent;
+    setPendingListenerEvent(null);
+    setPendingPosition(null);
+    setNodeForm({
+      contextId: ev.contextId,
+      kind: listenerKind,
+      name: listenerKind === 'policy' ? `When${ev.name}` : `${ev.name}Listener`,
+      description:
+        listenerKind === 'policy'
+          ? `Whenever ${ev.name}, then …`
+          : `Listens to ${ev.name} (${ev.kind})`,
+      status: 'draft',
+      tags: 'listener',
+      methods: listenerKind === 'saga' || listenerKind === 'process-manager' ? 'onEvent(),compensate()' : '',
+      aggregateId: '',
+    });
+    setModal('node');
+    // After listener is created we still need reacts-to — user connects, or we store pending link
+    sessionStorage.setItem(
+      'ddd-pending-reacts-to',
+      JSON.stringify({ eventId: ev.id, eventName: ev.name, contextId: ev.contextId }),
     );
   };
 
@@ -1409,6 +1501,11 @@ export default function WorkspacePage() {
           ) : selectedContext ? (
             <ContextInspector
               context={selectedContext}
+              elements={nodes.filter((n) => n.contextId === selectedContext.id)}
+              onSelectElement={(id) => {
+                setSelectedId(id);
+                setSelectedEdgeId(null);
+              }}
               onEdit={() => beginEditContext(selectedContext.id)}
               onDelete={() => {
                 if (window.confirm(`Delete ${selectedContext.name}?`))
@@ -1537,7 +1634,10 @@ export default function WorkspacePage() {
                   data-testid="select-node-kind"
                   className="h-10 w-full border border-input bg-background px-3 text-sm outline-none focus:border-primary"
                 >
-                  {nodeKinds.map((kind) => (
+                  {(EVENT_ONLY_KINDS.has(nodeForm.kind)
+                    ? nodeKinds.filter((k) => EVENT_ONLY_KINDS.has(k) || k === 'command' || k === 'policy' || k === 'actor')
+                    : nodeKinds
+                  ).map((kind) => (
                     <option value={kind} key={kind}>
                       {kind}
                     </option>
@@ -1560,6 +1660,51 @@ export default function WorkspacePage() {
                   ))}
                 </select>
               </label>
+
+            {EVENT_ONLY_KINDS.has(nodeForm.kind) && (
+              <label className="block">
+                <span className="mb-1.5 block font-mono-ui text-[10px] uppercase tracking-[.14em] text-muted-foreground">
+                  Owner {nodeForm.kind === 'domain-event' ? '(aggregate required)' : '(context or aggregate)'}
+                </span>
+                <select
+                  value={nodeForm.aggregateId || (nodeForm.kind !== 'domain-event' && nodeForm.contextId ? `__context__:${nodeForm.contextId}` : '')}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v.startsWith('__context__:')) {
+                      const cid = v.slice('__context__:'.length);
+                      setNodeForm((f) => ({ ...f, contextId: cid || f.contextId, aggregateId: '' }));
+                    } else {
+                      setNodeForm((f) => ({ ...f, aggregateId: v }));
+                    }
+                  }}
+                  data-testid="select-event-aggregate"
+                  className="h-10 w-full border border-input bg-background px-3 text-sm outline-none focus:border-primary"
+                >
+                  <option value="">Select owner…</option>
+                  {nodeForm.kind !== 'domain-event' &&
+                    contexts.map((c) => (
+                      <option key={`ctx-${c.id}`} value={`__context__:${c.id}`}>
+                        Bounded context · {c.name}
+                      </option>
+                    ))}
+                  {nodes
+                    .filter(
+                      (n) =>
+                        (n.kind === 'aggregate' || n.kind === 'aggregate-root') &&
+                        (nodeForm.kind !== 'domain-event' || n.contextId === nodeForm.contextId),
+                    )
+                    .map((n) => (
+                      <option key={n.id} value={n.id}>
+                        {n.name} · {n.kind}
+                      </option>
+                    ))}
+                </select>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Domain events must own an aggregate/root. Integration and external events may be owned by a bounded context.
+                </p>
+              </label>
+            )}
+
             </div>
             <Field
               label="Description"
@@ -1925,6 +2070,68 @@ export default function WorkspacePage() {
         </Modal>
       )}
 
+      {modal === 'event-listener' && pendingListenerEvent && (
+        <Modal
+          title="Create event listener?"
+          eyebrow="loose coupling"
+          onClose={() => {
+            setPendingListenerEvent(null);
+            setModal(null);
+          }}
+          testId="modal-event-listener"
+        >
+          <div className="space-y-4">
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              <strong className="text-foreground">{pendingListenerEvent.name}</strong> (
+              {pendingListenerEvent.kind.replace(/-/g, ' ')}) has no listener yet. Publishers should not know
+              subscribers — add a policy or saga that <em>reacts to</em> this event.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                data-testid="button-listener-policy"
+                onClick={() => startListenerForPending('policy')}
+                className="border border-border px-3 py-2.5 text-left text-sm hover:border-primary"
+              >
+                <span className="font-medium">Policy</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">Whenever this event, then a command…</span>
+              </button>
+              <button
+                type="button"
+                data-testid="button-listener-saga"
+                onClick={() => startListenerForPending('saga')}
+                className="border border-border px-3 py-2.5 text-left text-sm hover:border-primary"
+              >
+                <span className="font-medium">Saga (orchestration)</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">Central process that listens and issues commands</span>
+              </button>
+              <button
+                type="button"
+                data-testid="button-listener-pm"
+                onClick={() => startListenerForPending('process-manager')}
+                className="border border-border px-3 py-2.5 text-left text-sm hover:border-primary"
+              >
+                <span className="font-medium">Process manager</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">Long-running listener with compensation</span>
+              </button>
+              <button
+                type="button"
+                data-testid="button-listener-skip"
+                onClick={() => {
+                  setPendingListenerEvent(null);
+                  setModal(null);
+                  notify('You can add a listener later from the palette or Process links');
+                }}
+                className="py-2 text-sm text-muted-foreground hover:text-foreground"
+              >
+                Skip for now
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+
 
     </div>
   );
@@ -1932,13 +2139,18 @@ export default function WorkspacePage() {
 
 function ContextInspector({
   context,
+  elements,
   onEdit,
   onDelete,
+  onSelectElement,
 }: {
   context: { id: string; name: string; purpose: string; color: string; nodeCount: number; relationshipCount: number };
+  elements: Array<{ id: string; name: string; kind: string; description?: string }>;
   onEdit: () => void;
   onDelete: () => void;
+  onSelectElement: (id: string) => void;
 }) {
+  const sorted = [...elements].sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name));
   return (
     <div className="p-5" data-testid={`inspector-context-${context.id}`}>
       <div className="flex items-start justify-between">
@@ -1955,13 +2167,44 @@ function ContextInspector({
       <p className="mt-5 text-sm leading-relaxed text-muted-foreground">{context.purpose || 'No purpose statement yet.'}</p>
       <div className="mt-7 grid grid-cols-2 gap-px border border-border bg-border">
         <div className="bg-background p-3">
-          <div className="font-display text-xl font-semibold">{context.nodeCount}</div>
+          <div className="font-display text-xl font-semibold">{elements.length}</div>
           <div className="font-mono-ui text-[9px] uppercase tracking-wider text-muted-foreground">elements</div>
         </div>
         <div className="bg-background p-3">
           <div className="font-display text-xl font-semibold">{context.relationshipCount}</div>
           <div className="font-mono-ui text-[9px] uppercase tracking-wider text-muted-foreground">connections</div>
         </div>
+      </div>
+      <div className="mt-6">
+        <div className="mb-2 font-mono-ui text-[10px] uppercase tracking-[.15em] text-muted-foreground">
+          All elements <span className="text-foreground/50">({sorted.length})</span>
+        </div>
+        {sorted.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No elements in this context yet.</p>
+        ) : (
+          <ul className="max-h-[min(50vh,22rem)] space-y-1 overflow-y-auto" data-testid="list-context-elements">
+            {sorted.map((el) => (
+              <li key={el.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelectElement(el.id)}
+                  className="flex w-full items-start gap-2 rounded-md border border-transparent px-2 py-1.5 text-left text-xs hover:border-border hover:bg-muted/60"
+                  data-testid={`button-context-element-${el.id}`}
+                >
+                  <span className="mt-0.5 shrink-0 font-mono-ui text-[9px] uppercase tracking-wider text-muted-foreground">
+                    {el.kind.replace(/-/g, ' ')}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-foreground">{el.name}</span>
+                    {el.description ? (
+                      <span className="mt-0.5 line-clamp-1 text-[10px] text-muted-foreground">{el.description}</span>
+                    ) : null}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
       <button
         type="button"
@@ -2001,9 +2244,10 @@ function NodeInspector({
     representation?: 'logical' | 'physical';
     physicalTable?: { connectionId: string; schema: string; table: string } | null;
     generalizationConstraint?: (typeof GENERALIZATION_CONSTRAINTS)[number] | 'none';
+    aggregateId?: string | null;
   };
-  contexts: Array<{ id: string; name: string }>;
-  nodes: Array<{ id: string; name: string }>;
+  contexts: Array<{ id: string; name: string; color?: string }>;
+  nodes: Array<{ id: string; name: string; kind?: string; contextId?: string }>;
   relationships: Array<{ id: string; sourceId: string; targetId: string; type: string; label: string }>;
   onClose: () => void;
   onSave: (data: {
@@ -2025,10 +2269,12 @@ function NodeInspector({
     representation?: 'logical' | 'physical';
     physicalTable?: { connectionId: string; schema: string; table: string } | null;
     generalizationConstraint?: (typeof GENERALIZATION_CONSTRAINTS)[number] | 'none';
+    aggregateId?: string | null;
   }) => void;
   onDelete: () => void;
   onDeleteRelationship: (id: string) => void;
 }) {
+  const isEventNode = ['domain-event', 'integration-event', 'external-event'].includes(node.kind);
   const [name, setName] = useState(node.name);
   const [description, setDescription] = useState(node.description);
   const [contextId, setContextId] = useState(node.contextId);
@@ -2039,6 +2285,7 @@ function NodeInspector({
   const [eventVersion, setEventVersion] = useState(node.eventVersion ?? '1.0.0');
   const [eventPayloadSchema, setEventPayloadSchema] = useState(node.eventPayloadSchema ?? '');
   const [eventCompatibility, setEventCompatibility] = useState(node.eventCompatibility ?? 'backward');
+  const [aggregateId, setAggregateId] = useState(node.aggregateId ?? '');
   const [sagaStyle, setSagaStyle] = useState((node as { sagaStyle?: string }).sagaStyle ?? 'none');
   const [cqrsSide, setCqrsSide] = useState((node as { cqrsSide?: string }).cqrsSide ?? 'none');
   const [representation, setRepresentation] = useState(node.representation ?? 'logical');
@@ -2056,6 +2303,7 @@ function NodeInspector({
     setEventVersion(node.eventVersion ?? '1.0.0');
     setEventPayloadSchema(node.eventPayloadSchema ?? '');
     setEventCompatibility(node.eventCompatibility ?? 'backward');
+    setAggregateId(node.aggregateId ?? '');
     setSagaStyle((node as { sagaStyle?: string }).sagaStyle ?? 'none');
     setCqrsSide((node as { cqrsSide?: string }).cqrsSide ?? 'none');
     setRepresentation(node.representation ?? 'logical');
@@ -2169,6 +2417,60 @@ function NodeInspector({
             />
           </>
         )}
+        
+      {isEventNode && (
+        <label className="mt-4 block">
+          <span className="mb-1.5 block font-mono-ui text-[10px] uppercase tracking-[.14em] text-muted-foreground">Selected owner</span>
+          <select
+            value={
+              aggregateId
+                ? aggregateId
+                : node.kind !== 'domain-event' && contextId
+                  ? `__context__:${contextId}`
+                  : ''
+            }
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v.startsWith('__context__:')) {
+                const cid = v.slice('__context__:'.length);
+                setContextId(cid);
+                setAggregateId('');
+              } else {
+                setAggregateId(v);
+              }
+            }}
+            data-testid="select-inspector-event-owner"
+            className="h-9 w-full border border-input bg-background px-3 text-sm"
+          >
+            <option value="">{node.kind === 'domain-event' ? 'Select aggregate…' : 'Select owner…'}</option>
+            {node.kind !== 'domain-event' &&
+              contexts.map((c) => (
+                <option key={`ctx-${c.id}`} value={`__context__:${c.id}`}>
+                  Bounded context · {c.name}
+                </option>
+              ))}
+            {nodes
+              .filter(
+                (n) =>
+                  (n.kind === 'aggregate' || n.kind === 'aggregate-root') &&
+                  (node.kind !== 'domain-event' || n.contextId === contextId),
+              )
+              .map((n) => (
+                <option key={n.id} value={n.id}>
+                  {n.name} · {n.kind}
+                </option>
+              ))}
+          </select>
+          <p className="mt-1 text-[11px] text-muted-foreground" data-testid="text-inspector-owner-summary">
+            {aggregateId
+              ? `Owner: ${nodes.find((n) => n.id === aggregateId)?.name ?? aggregateId} (${nodes.find((n) => n.id === aggregateId)?.kind ?? 'element'})`
+              : node.kind !== 'domain-event'
+                ? `Owner: bounded context · ${contexts.find((c) => c.id === contextId)?.name ?? contextId}`
+                : 'No aggregate owner selected'}
+          </p>
+        </label>
+      )}
+
         <label className="block">
           <span className="mb-1.5 block font-mono-ui text-[10px] uppercase tracking-[.14em] text-muted-foreground">Status</span>
           <select
@@ -2374,6 +2676,7 @@ function NodeInspector({
             eventVersion: eventVersion.trim() || '1.0.0',
             eventPayloadSchema,
             eventCompatibility: eventCompatibility as 'backward' | 'forward' | 'full' | 'none',
+            aggregateId: isEventNode ? (aggregateId || null) : undefined,
             sagaStyle: sagaStyle as 'orchestration' | 'choreography' | 'none',
             cqrsSide: cqrsSide as 'command' | 'query' | 'both' | 'none',
             ...(node.kind === 'entity'
